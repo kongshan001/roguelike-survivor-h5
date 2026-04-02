@@ -1,0 +1,14 @@
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tool artifacts
+.playwright-mcp/
+.superpowers/brainstorm/
+
+# Dev server
+*.pyc
