@@ -83,10 +83,11 @@ H5类吸血鬼幸存者肉鸽游戏，纯Canvas 2D实现，单HTML文件（`inde
 
 ### 4. QA测试 Agent (`qa`)
 
-**职责**：功能测试、数值验证、兼容性测试、体验反馈、缺陷管理
+**职责**：功能测试、数值验证、兼容性测试、体验反馈、缺陷管理、自动化E2E测试
 
 **工作内容**：
-- 执行功能冒烟测试（标题→选武器→游戏→结算完整流程）
+- 维护 Playwright E2E 测试套件 (`tests/smoke.test.ts`)
+- 运行 `npm test` 执行自动化回归
 - 数值平衡测试（生存时间、击杀效率、升级频率）
 - 浏览器兼容性测试（Chrome/Safari/Firefox）
 - 移动端适配测试（DPR、触控、缩放）
@@ -94,9 +95,20 @@ H5类吸血鬼幸存者肉鸽游戏，纯Canvas 2D实现，单HTML文件（`inde
 - 维护 `docs/team/qa-log.md`
 
 **产出物**：
+- Playwright E2E 测试用例 (`tests/smoke.test.ts`)
 - 测试用例表（TC-XXX）
 - 缺陷报告（BUG-XXX）
 - 体验反馈（ENH-XXX）
+
+**测试工具**：
+- **Playwright** (`@playwright/test`) — E2E自动化测试
+- **http-server** — 本地静态服务器（CI/本地测试共用）
+- **GitHub Actions** — 每次 push/PR 自动运行全部测试
+
+**测试命令**：
+- `npm test` — 运行全部测试（headless）
+- `npm run test:headed` — 有头模式（可视化调试）
+- `npm run test:ui` — Playwright UI 模式
 
 **缺陷分级**：
 - **Critical**：核心功能不可用（游戏崩溃、无法升级、无法移动）

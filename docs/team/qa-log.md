@@ -4,6 +4,27 @@
 
 ---
 
+## 自动化测试体系
+
+**工具**: Playwright (TypeScript) + GitHub Actions CI
+
+**命令**:
+- `npm test` — 运行全部E2E测试
+- `npm run test:headed` — 有头模式运行（可视化调试）
+- `npm run test:ui` — Playwright UI模式
+
+**测试分层**:
+| 层级 | 文件 | 覆盖范围 | 用例数 |
+|------|------|---------|--------|
+| smoke | `tests/smoke.test.ts` | 核心流程冒烟 | 4 |
+| gameplay | `tests/smoke.test.ts` | 战斗/升级/武器 | 4 |
+| balance | `tests/smoke.test.ts` | 数值平衡验证 | 3 |
+| regression | `tests/smoke.test.ts` | 历史BUG回归 | 3 |
+
+**CI**: 每次 push/PR 自动运行，`.github/workflows/test.yml`
+
+---
+
 ## 当前待处理缺陷
 
 | ID | 严重度 | 模块 | 描述 | 状态 | 指派 |
