@@ -1,14 +1,35 @@
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # OS
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# Tool artifacts
+# Node
+node_modules/
+package-lock.json
+
+# Playwright
+test-results/
+playwright-report/
 .playwright-mcp/
+
+# Superpowers (brainstorm artifacts)
 .superpowers/brainstorm/
 
-# Dev server
+# Claude Code
+.claude/
+
+# Python
+__pycache__/
 *.pyc
+*.pyo
+
+# Logs
+*.log
+npm-debug.log*

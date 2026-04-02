@@ -206,3 +206,27 @@ docs/
 - 数值调整必须在 designer log 中记录决策原因
 - 视觉变更必须在 art log 中更新配色表
 - 前端不得擅自修改游戏数值，须与策划确认
+
+## 远程仓库同步规则
+
+远程仓库：`origin` → `https://github.com/kongshan001/roguelike-survivor-h5.git`，主分支 `main`。
+
+**每个角色在完成以下工作后，必须将变更提交并推送到 GitHub 远程仓库：**
+
+- 策划：设计规格书（`docs/superpowers/specs/`）更新后推送
+- 前端：代码实现（`index.html`）和 `docs/team/frontend-log.md` 更新后推送
+- 美术：视觉规范（`docs/team/art-log.md`）更新后推送
+- QA：测试报告和缺陷记录（`docs/team/qa-log.md`）更新后推送
+- 版本发布：`docs/VERSION`、`docs/CHANGELOG.md` 更新后推送
+- 所有角色 log 文件更新后均须推送
+
+**提交流程**：
+
+1. `git add` 相关变更文件（不使用 `git add -A`，按需暂存）
+2. `git commit` — 使用规范的 commit message，注明角色和变更内容（如 `docs(designer): 新增武器系统设计规格`）
+3. `git push origin main` — 推送到远程
+
+**commit message 格式**：`<type>(<scope>): <description>`
+
+- type: `feat` / `fix` / `docs` / `style` / `refactor` / `chore`
+- scope: `designer` / `frontend` / `art` / `qa` / `release`
