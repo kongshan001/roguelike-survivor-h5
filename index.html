@@ -112,7 +112,8 @@ const CFG = {
     holywater: { name:'圣水', icon:'💧', desc:'环绕旋转' },
     knife:     { name:'飞刀', icon:'🗡', desc:'自动投掷' },
     lightning: { name:'闪电', icon:'⚡', desc:'随机电击' },
-    bible:     { name:'圣经', icon:'📖', desc:'范围旋转' }
+    bible:     { name:'圣经', icon:'📖', desc:'范围旋转' },
+    firestaff: { name:'火焰法杖', icon:'🔥', desc:'锥形火焰' }
   },
   PASSIVES: {
     speedboots: { name:'疾风靴', icon:'👢', desc:'移动速度+15%', maxStack:3 },
@@ -166,11 +167,13 @@ class Player{
     this.level=1;this.exp=0;this.pickupRange=CFG.PICKUP_RANGE;
     this.armor=0;this.invTimer=0;this.kills=0;this.gold=0;
     this.weapons=[];this.passives={};
+    this.facingAngle=0; // direction player faces (radians)
   }
   update(dt,input){
     if(input.x||input.y){
       this.x+=input.x*this.speed*dt;
       this.y+=input.y*this.speed*dt;
+      this.facingAngle=Math.atan2(input.y,input.x);
     }
     this.x=clamp(this.x,this.w/2,CFG.MAP_W-this.w/2);
     this.y=clamp(this.y,this.h/2,CFG.MAP_H-this.h/2);
@@ -593,6 +596,81 @@ class Bible extends Weapon{
   }
 }
 
+class FireStaff extends Weapon{
+  constructor(owner){super('firestaff',owner)}
+  get coneWidth(){return this.level>=3?120:this.level>=2?100:80}
+  get coneRange(){return this.level>=3?160:this.level>=2?130:100}
+  get dps(){return this.level>=3?7:this.level>=2?5:3}
+  get burnDps(){return this.level>=3?2:0}
+  update(dt,enemies){
+    const angle=this.owner.facingAngle;
+    const range=this.coneRange;
+    const halfArc=Math.PI/6; // 30 degrees each side = 60 degree cone
+    for(const e of enemies){
+      const dx=e.x-this.owner.x, dy=e.y-this.owner.y;
+      const d=Math.hypot(dx,dy);
+      if(d<range&&d>1){
+        const ea=Math.atan2(dy,dx);
+        let diff=ea-angle;
+        while(diff>Math.PI)diff-=Math.PI*2;
+        while(diff<-Math.PI)diff+=Math.PI*2;
+        if(Math.abs(diff)<halfArc){
+          e.hp-=this.dps*dt;
+          // Burn effect tracking
+          if(!e._burn)e._burn={dmg:0,t:0};
+          if(this.burnDps>0){e._burn.dmg=this.burnDmg;e._burn.t=2;}
+        }
+      }
+    }
+    // Apply burn to enemies outside cone
+    for(const e of enemies){
+      if(e._burn&&e._burn.t>0){
+        if(!this._isInCone(e)){
+          e.hp-=e._burn.dmg*dt;
+        }
+        e._burn.t-=dt;
+        if(e._burn.t<=0)e._burn=null;
+      }
+    }
+  }
+  _isInCone(e){
+    const dx=e.x-this.owner.x,dy=e.y-this.owner.y;
+    const d=Math.hypot(dx,dy);
+    if(d>=this.coneRange||d<1)return false;
+    let diff=Math.atan2(dy,dx)-this.owner.facingAngle;
+    while(diff>Math.PI)diff-=Math.PI*2;
+    while(diff<-Math.PI)diff+=Math.PI*2;
+    return Math.abs(diff)<Math.PI/6;
+  }
+  draw(ctx,cam,canvas){
+    const s=cam.w2s(this.owner.x,this.owner.y,canvas);
+    const angle=this.owner.facingAngle;
+    const range=this.coneRange;
+    const halfArc=Math.PI/6;
+    // Cone fill
+    const grad=ctx.createRadialGradient(s.x,s.y,5,s.x,s.y,range);
+    grad.addColorStop(0,'rgba(255,152,0,0.5)');
+    grad.addColorStop(0.6,'rgba(255,87,34,0.3)');
+    grad.addColorStop(1,'rgba(255,87,34,0)');
+    ctx.fillStyle=grad;
+    ctx.beginPath();
+    ctx.moveTo(s.x,s.y);
+    ctx.arc(s.x,s.y,range,angle-halfArc,angle+halfArc);
+    ctx.closePath();
+    ctx.fill();
+    // Inner bright core
+    const grad2=ctx.createRadialGradient(s.x,s.y,3,s.x,s.y,range*0.4);
+    grad2.addColorStop(0,'rgba(255,235,59,0.6)');
+    grad2.addColorStop(1,'rgba(255,152,0,0)');
+    ctx.fillStyle=grad2;
+    ctx.beginPath();
+    ctx.moveTo(s.x,s.y);
+    ctx.arc(s.x,s.y,range*0.4,angle-halfArc*0.7,angle+halfArc*0.7);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
 // ===== GAME =====
 const canvas=document.getElementById('c');
 const ctx=canvas.getContext('2d');
@@ -676,13 +754,13 @@ function getInput(){
 }
 
 // Upgrade system
-const WEAPON_CLASSES={holywater:HolyWater,knife:Knife,lightning:Lightning,bible:Bible};
+const WEAPON_CLASSES={holywater:HolyWater,knife:Knife,lightning:Lightning,bible:Bible,firestaff:FireStaff};
 
 function generateUpgrades(player){
   const pool=[];
   // New weapons
   const owned=new Set(player.weapons.map(w=>w.name));
-  for(const name of ['holywater','knife','lightning','bible']){
+  for(const name of ['holywater','knife','lightning','bible','firestaff']){
     if(!owned.has(name)){
       const wc=CFG.WEAPONS[name];
       pool.push({type:'weapon',icon:wc.icon,name:wc.name,desc:wc.desc,
@@ -899,6 +977,7 @@ function loop(time){
       else if(w instanceof Knife)w.update(dt,game.enemies,game.bullets);
       else if(w instanceof Lightning)w.update(dt,game.enemies);
       else if(w instanceof Bible)w.update(dt,game.enemies);
+      else if(w instanceof FireStaff)w.update(dt,game.enemies);
     }
 
     // Update bullets
