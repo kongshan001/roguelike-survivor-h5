@@ -2,6 +2,23 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [0.3.2] - 2026-04-03
+
+### Added
+- **Boss Phase 3 螺旋弹幕**：HP<25% 时进入，16方向旋转弹幕/2s，1.5倍速追踪
+- **Boss 出场警告**：红色渐变横幅 "⚠ BOSS来了 ⚠" 持续3秒 + 红屏闪烁
+- **Boss HP 百分比**：血条上方实时显示 `HP:XX%`
+
+### Changed
+- Boss 三阶段视觉区分：
+  - Phase 1：经典红+黄眼+橙角
+  - Phase 2：暗橙+橙眼（暴怒）
+  - Phase 3：深品红脉动+红眼+嘴部火焰粒子
+
+### QA
+- E2E 测试 12/14 通过（2个时序相关 flaky，与v0.3.1一致）
+- BUG-005/006/ENH-001/002 确认已修复并关闭
+
 ## [0.3.1] - 2026-04-03
 
 ### Fixed
