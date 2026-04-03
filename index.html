@@ -786,6 +786,12 @@ class ThunderHolyWater extends Weapon{
       ctx.lineTo(s1.x,s1.y);
       ctx.stroke();
     }
+    // Evolution aura — pulsing ring
+    const cs=cam.w2s(this.owner.x,this.owner.y,canvas);
+    const pulse=Math.sin(Date.now()*0.004)*0.15+0.35;
+    ctx.strokeStyle=`rgba(255,145,0,${pulse})`;
+    ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(cs.x,cs.y,r+10,0,Math.PI*2);ctx.stroke();
   }
 }
 
@@ -938,7 +944,7 @@ function showUpgrade(choices){
   for(const c of choices){
     const card=document.createElement('div');
     card.className='upg-card';
-    card.style.background=`rgba(${c.badgeColor==='#4fc3f7'?'79,195,247':c.badgeColor==='#ffd54f'?'255,213,79':'102,187,106'},0.15)`;
+    card.style.background=`rgba(${c.badgeColor==='#4fc3f7'?'79,195,247':c.badgeColor==='#ffd54f'?'255,213,79':c.badgeColor==='#ff9100'?'255,145,0':'102,187,106'},0.15)`;
     card.style.border=`2px solid ${c.badgeColor}`;
     card.innerHTML=`<div class="icon">${c.icon}</div><div class="name" style="color:${c.badgeColor}">${c.name}</div><div class="desc">${c.desc}</div><div class="badge" style="background:${c.badgeColor};color:#1a1a2e">${c.badge}</div>`;
     card.onclick=()=>{
