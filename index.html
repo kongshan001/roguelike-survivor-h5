@@ -205,6 +205,13 @@ const CFG = {
     cooldown: 2.5,
     afterimages: 3
   },
+  HUD_WEAPONS: {
+    slotSize: 32,
+    gap: 4,
+    bottomOffset: 24,
+    maxWeapons: 6,
+    maxPassives: 6
+  },
   SAVE: {
     key: 'roguelike_survivor_save',
     version: 1
@@ -2337,6 +2344,97 @@ function loop(time){
     ctx.fillText(dashReady?'DASH':'CD',dX-4,dY+3.5);
     ctx.textAlign='center';
   }
+
+	  // Weapon / Passive bar (bottom center)
+	  {
+	    const hw=CFG.HUD_WEAPONS;
+	    const slot=hw.slotSize, gap=hw.gap;
+	    const pl=game.player;
+	    const weapons=pl.weapons||[];
+	    const passives=pl.passives||{};
+	    const passiveEntries=Object.entries(passives).filter(([,v])=>v>0);
+
+	    const totalW=hw.maxWeapons*slot+(hw.maxWeapons-1)*gap;
+	    const totalP=hw.maxPassives*slot+(hw.maxPassives-1)*gap;
+	    const sepW=8;
+	    const barW=totalW+sepW+totalP;
+	    const barStartX=(W-barW)/2;
+	    const barY=H-hw.bottomOffset-slot;
+
+	    // Weapon slots
+	    for(let i=0;i<hw.maxWeapons;i++){
+	      const sx=barStartX+i*(slot+gap);
+	      const w=weapons[i];
+	      if(w){
+	        const wc=CFG.WEAPONS[w.name];
+	        const isEvolved=wc&&wc.evolved;
+	        const isMaxLevel=w.level>=w.maxLevel&&!isEvolved;
+	        if(isMaxLevel){
+	          const pulse=0.6+0.4*Math.sin(game.elapsed*4);
+	          ctx.strokeStyle=`rgba(255,213,0,${pulse})`;
+	          ctx.lineWidth=2;
+	          ctx.strokeRect(sx-1,barY-1,slot+2,slot+2);
+	        }else{
+	          ctx.strokeStyle='rgba(255,255,255,0.4)';
+	          ctx.lineWidth=1;
+	          ctx.strokeRect(sx,barY,slot,slot);
+	        }
+	        ctx.fillStyle=isEvolved?'rgba(255,213,0,0.15)':'rgba(255,255,255,0.08)';
+	        ctx.fillRect(sx,barY,slot,slot);
+	        const icon=wc?wc.icon:'?';
+	        ctx.font='14px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+	        ctx.fillStyle='#fff';
+	        ctx.fillText(icon,sx+slot/2,barY+slot/2-3);
+	        ctx.font='bold 8px monospace';
+	        if(isEvolved){
+	          ctx.fillStyle='#ffd54f';
+	          ctx.fillText('\u2605',sx+slot/2,barY+slot-5);
+	        }else{
+	          ctx.fillStyle=isMaxLevel?'#ffd54f':'#ccc';
+	          ctx.fillText('Lv'+w.level,sx+slot/2,barY+slot-5);
+	        }
+	      }else{
+	        ctx.strokeStyle='rgba(255,255,255,0.15)';
+	        ctx.lineWidth=1;
+	        ctx.setLineDash([3,3]);
+	        ctx.strokeRect(sx,barY,slot,slot);
+	        ctx.setLineDash([]);
+	      }
+	    }
+
+	    // Separator
+	    const sepX=barStartX+totalW+gap;
+	    ctx.fillStyle='rgba(255,255,255,0.25)';
+	    ctx.fillRect(sepX,barY+4,2,slot-8);
+
+	    // Passive slots
+	    const passStartX=sepX+sepW;
+	    for(let i=0;i<hw.maxPassives;i++){
+	      const sx=passStartX+i*(slot+gap);
+	      const pKey=passiveEntries[i]?passiveEntries[i][0]:null;
+	      const pStacks=pKey?passives[pKey]:0;
+	      if(pKey&&pStacks>0){
+	        const pc=CFG.PASSIVES[pKey];
+	        ctx.fillStyle='rgba(102,187,106,0.15)';
+	        ctx.fillRect(sx,barY,slot,slot);
+	        ctx.strokeStyle='rgba(102,187,106,0.4)';
+	        ctx.lineWidth=1;
+	        ctx.strokeRect(sx,barY,slot,slot);
+	        ctx.font='14px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+	        ctx.fillStyle='#fff';
+	        ctx.fillText(pc.icon,sx+slot/2,barY+slot/2-3);
+	        ctx.font='bold 8px monospace';
+	        ctx.fillStyle='#66bb6a';
+	        ctx.fillText('\u00d7'+pStacks,sx+slot/2,barY+slot-5);
+	      }else{
+	        ctx.strokeStyle='rgba(255,255,255,0.15)';
+	        ctx.lineWidth=1;
+	        ctx.setLineDash([3,3]);
+	        ctx.strokeRect(sx,barY,slot,slot);
+	        ctx.setLineDash([]);
+	      }
+	    }
+	  }
 }
 
 requestAnimationFrame(loop);
