@@ -16,8 +16,81 @@
 | P1 | ~~新敌人：幽灵（穿墙闪烁+低血量瞬移）~~ | **✅ 已完成 v0.5.0** |
 | P2 | ~~多角色系统（不同初始属性/专属武器）~~ | **✅ 已完成 v0.7.0** |
 | P1 | ~~宝箱系统（金币开箱，解决BUG-007金币用途不明确）~~ | **✅ 已完成 v0.6.0** |
-| P1 | 新武器：冰冻光环（范围减速+冰冻控制） | **进行中** |
+| P1 | ~~新武器：冰冻光环（范围减速+冰冻控制）~~ | **✅ 已完成 v0.8.0** |
+| P1 | 音效系统（Web Audio API，8bit风格合成音） | **进行中** |
 | P2 | ~~第二条进化路线（飞刀+火焰法杖→火焰飞刀）~~ | **✅ 已完成 v0.4.2** |
+
+---
+
+## 2026-04-03 — 策划迭代12：音效系统设计
+
+### 背景
+游戏目前完全无声，缺乏打击反馈和氛围感。音效系统使用 Web Audio API 振荡器合成 8-bit 风格音效，零外部文件，保持单 HTML 文件架构。
+
+### 成果
+
+**SFX 配置表**：
+
+| ID | 触发时机 | 音色 | 频率 | 时长 | 波形 | 说明 |
+|----|---------|------|------|------|------|------|
+| `hit` | 玩家受伤 | 下行短音 | 440→110Hz | 0.15s | square | 受击反馈 |
+| `kill` | 敌人死亡 | 上行短音 | 200→600Hz | 0.1s | square | 击杀爽感 |
+| `knife` | 飞刀发射 | 短促刺音 | 800Hz | 0.05s | sawtooth | 投掷感 |
+| `lightning` | 闪电击中 | 噪声爆发 | 白噪声 | 0.12s | 白噪声 | 电击感 |
+| `levelup` | 升级 | 三个上行音阶 | C5-E5-G5 | 0.3s | square | 成就感 |
+| `pickup` | 拾取宝石/食物 | 短促叮声 | 880Hz | 0.08s | sine | 收集感 |
+| `chest` | 开箱 | 上行琶音 | 440→660→880Hz | 0.25s | triangle | 惊喜感 |
+| `boss` | Boss出场 | 低沉警告 | 110Hz×3 | 0.6s | sawtooth | 危机感 |
+| `freeze` | 冰冻触发 | 高频碎裂 | 1200→400Hz | 0.15s | sine | 冰碎感 |
+| `gameover` | 死亡/失败 | 下行长音 | 440→110Hz | 0.8s | sawtooth | 失败感 |
+| `victory` | 通关 | 上行凯旋 | C5→E5→G5→C6 | 0.5s | square | 胜利感 |
+
+**实现方案**：
+- `SFX` 全局对象，`init()` 在首次用户交互时创建 `AudioContext`（满足浏览器自动播放策略）
+- `play(id)` 方法：根据 ID 查表创建 `OscillatorNode` + `GainNode`，播放后自动断开
+- 音量控制：`masterVolume = 0.3`（默认30%音量，避免太吵）
+- 白噪声实现：`AudioBuffer` 填充随机采样值
+
+**CONFIG 数值**：
+```javascript
+SFX: {
+  enabled: true,
+  volume: 0.3,
+  sounds: {
+    hit:      { freq:[440,110], dur:0.15, type:'square' },
+    kill:     { freq:[200,600], dur:0.10, type:'square' },
+    knife:    { freq:800,       dur:0.05, type:'sawtooth' },
+    lightning:{ noise:true,     dur:0.12 },
+    levelup:  { freq:[523,659,784], dur:0.1, type:'square', seq:true },
+    pickup:   { freq:880,       dur:0.08, type:'sine' },
+    chest:    { freq:[440,660,880], dur:0.08, type:'triangle', seq:true },
+    boss:     { freq:110,       dur:0.6,  type:'sawtooth', repeat:3 },
+    freeze:   { freq:[1200,400],dur:0.15, type:'sine' },
+    gameover: { freq:[440,110], dur:0.8,  type:'sawtooth' },
+    victory:  { freq:[523,659,784,1047], dur:0.12, type:'square', seq:true }
+  }
+}
+```
+
+**触发点**（10个）：
+1. `player.takeDamage()` → `SFX.play('hit')`
+2. 敌人 `hp<=0` → `SFX.play('kill')`
+3. `Knife.update()` 发射时 → `SFX.play('knife')`
+4. `Lightning.update()` 电击时 → `SFX.play('lightning')`
+5. `player.addExp()` 返回 true → `SFX.play('levelup')`
+6. 宝石被收集 → `SFX.play('pickup')`
+7. 宝箱开箱 → `SFX.play('chest')`
+8. Boss 生成 → `SFX.play('boss')`
+9. 冰冻触发 → `SFX.play('freeze')`
+10. `endGame()` → `SFX.play('gameover')` 或 `SFX.play('victory')`
+
+### 决策记录
+- 8-bit 合成音与像素风视觉风格统一
+- 不使用外部音频文件，保持单文件零依赖架构
+- `AudioContext` 延迟创建（首次交互时），满足 Chrome 自动播放策略
+- 音效数量控制在10个，覆盖核心反馈但不过度
+- 飞刀和闪电有专属音效，其他武器（圣水/圣经/火焰/冰冻）使用通用 kill/pickup 音效
+- 未来可扩展：BGM 循环、更多武器专属音效
 
 ---
 
