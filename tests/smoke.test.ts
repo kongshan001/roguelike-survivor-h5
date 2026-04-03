@@ -33,12 +33,16 @@ function gameState(page: Page) {
   ).then(JSON.parse);
 }
 
-/** 开始游戏并选择指定武器 */
+/** 开始游戏并选择指定武器（默认选择魔法师 → 自选武器） */
 async function startGameWithWeapon(page: Page, weapon: 'holywater' | 'knife' | 'lightning') {
   await page.goto('/');
   await page.getByRole('button', { name: '开始游戏' }).click();
+  // Select mage (first card in char-select) — mage allows weapon choice
+  await page.locator('#char-select .ws-card').first().click();
+  await page.waitForTimeout(300);
+  // Now select weapon
   const weaponIndex = { holywater: 0, knife: 1, lightning: 2 };
-  const cards = page.locator('.ws-card');
+  const cards = page.locator('#weapon-select .ws-card');
   await cards.nth(weaponIndex[weapon]).click();
   await page.waitForTimeout(500);
 }
