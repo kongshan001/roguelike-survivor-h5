@@ -27,7 +27,89 @@
 | P2 | ~~第二条进化路线（飞刀+火焰法杖→火焰飞刀）~~ | **✅ 已完成 v0.4.2** |
 | P1 | ~~第7种敌人：精英骷髅（高HP远程型 — 中后期威胁）~~ | **✅ 已完成 v0.15.0** |
 | P1 | ~~HUD武器/技能栏（显示当前武器+等级+被动道具）~~ | **✅ 已完成 v0.16.0** |
-| P1 | 击杀连击系统（连续击杀经验加成+HUD显示） | **进行中** |
+| P1 | ~~击杀连击系统（连续击杀经验加成+HUD显示）~~ | **✅ 已完成 v0.17.0** |
+| P1 | 屏幕震动系统（击杀/Boss/受伤时屏幕抖动反馈） | **进行中** |
+
+---
+
+## 2026-04-03 — 策划迭代21：屏幕震动系统
+
+### 背景
+当前游戏击杀敌人、受伤、Boss出场等关键时刻缺乏视觉冲击力。屏幕震动（Screen Shake）是几乎所有动作游戏使用的低成本高回报反馈机制，让每次击杀"感觉"更强。配合 v0.17.0 的连击系统，连击越高震动越强，形成"越来越爽"的正反馈循环。
+
+### 成果
+
+**屏幕震动系统**：Camera 系统中集成震动偏移，通过 `game.shake` 参数驱动。
+
+**CONFIG 数值**：
+```javascript
+SCREEN_SHAKE: {
+  kill:     { intensity: 2,  duration: 0.08 },  // 普通击杀
+  killBig:  { intensity: 4,  duration: 0.12 },  // 精英/Boss击杀
+  hurt:     { intensity: 6,  duration: 0.15 },  // 玩家受伤
+  boss:     { intensity: 8,  duration: 0.3  },  // Boss出场
+  combo5:   { intensity: 3,  duration: 0.1  },  // 5连击里程碑
+  combo10:  { intensity: 5,  duration: 0.15 },  // 10连击里程碑
+  combo20:  { intensity: 7,  duration: 0.2  },  // 20连击里程碑
+  combo50:  { intensity: 10, duration: 0.25 }   // 50连击里程碑
+}
+```
+
+**震动机制**：
+- `game.shake = { intensity, duration, timer }`
+- 每帧在 Camera.w2s() 中叠加随机偏移：`(Math.random()-0.5)*2*intensity*(timer/duration)`
+- timer 归零后自动停止（偏移归零）
+- 新震动覆盖旧震动时取更大 intensity（不叠加，避免过度抖动）
+- 震动不影响玩家移动和碰撞判定（纯视觉偏移）
+
+**触发点**（6个）：
+| 时机 | 震动等级 | 代码位置 |
+|------|---------|---------|
+| 普通敌人死亡 | kill | Enemy hp<=0 |
+| 精英/Boss死亡 | killBig | Enemy hp<=0 + elite/boss判断 |
+| 玩家受伤 | hurt | Player.takeDamage() |
+| Boss出场 | boss | Boss spawn logic |
+| 连击里程碑 | combo5/10/20/50 | 击杀连击里程碑检测 |
+
+**Camera.w2s 修改**：
+```javascript
+w2s(wx,wy,canvas){
+  let sx=(wx-this.x)*canvas.width/CVV + canvas.width/2;
+  let sy=(wy-this.y)*canvas.height/CVV + canvas.height/2;
+  // Apply screen shake
+  if(game && game.shake && game.shake.timer>0){
+    const factor=game.shake.timer/game.shake.duration;
+    const i=game.shake.intensity*factor;
+    sx+=(Math.random()-0.5)*2*i;
+    sy+=(Math.random()-0.5)*2*i;
+  }
+  return{x:sx,y:sy};
+}
+```
+
+**Game 新增字段**：
+```javascript
+shake: null  // { intensity, duration, timer }
+```
+
+**辅助函数**：
+```javascript
+function screenShake(type){
+  const cfg=CFG.SCREEN_SHAKE[type];
+  if(!cfg)return;
+  if(!game.shake || cfg.intensity>=game.shake.intensity){
+    game.shake={intensity:cfg.intensity, duration:cfg.duration, timer:cfg.duration};
+  }
+}
+```
+
+### 决策记录
+- 震动取最大值而非叠加，避免多个同类型事件同时触发导致过度抖动
+- 普通击杀震动极轻(2px/0.08s)，大量击杀时不会抖到看不清
+- Boss出场震动最强(8px/0.3s)，传达"大事发生了"
+- 震动是纯视觉偏移，不影响游戏逻辑坐标
+- 配合连击系统：连击越高，每次击杀震动不变，但里程碑会触发额外大震动
+- 震动衰减因子 `timer/duration` 让震动从强到弱自然消失
 
 ---
 
