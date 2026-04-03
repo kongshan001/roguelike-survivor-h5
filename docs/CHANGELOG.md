@@ -2,6 +2,23 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [0.18.0] - 2026-04-03
+
+### Added
+- **屏幕震动系统**：击杀/受伤/Boss出场/连击里程碑时屏幕抖动反馈
+  - 8种震动等级：kill(2px) → killBig(4px) → hurt(6px) → boss(8px) → combo里程碑(3-10px)
+  - Camera.w2s 叠加随机偏移，纯视觉效果不影响逻辑坐标
+  - 线性衰减：`timer/duration` 因子从全强度自然消失
+  - 覆盖规则：新震动强度>=旧震动时才覆盖（避免小震动打断大震动）
+- **6个触发点**：普通击杀、精英击杀、玩家受伤、Boss出场、连击里程碑(5/10/20/50)
+- `CFG.SCREEN_SHAKE` 配置驱动
+
+### Fixed
+- 屏幕震动计时器衰减从 screenFlash 条件块中独立出来，不再依赖受伤红屏闪烁
+
+### QA
+- E2E 测试 13/14 通过（1个时序相关 flaky，非回归）
+
 ## [0.17.0] - 2026-04-03
 
 ### Added
