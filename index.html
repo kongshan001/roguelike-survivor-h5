@@ -48,6 +48,17 @@ canvas{display:block;position:absolute;top:0;left:0}
 #result-screen .result-title{font:bold 32px monospace;margin-bottom:20px}
 #result-screen .stats{text-align:center;font:14px monospace;color:#ccc;margin-bottom:30px;line-height:2}
 #result-screen button{font:bold 16px monospace;color:#1a1a2e;background:#ffd54f;border:none;padding:10px 36px;border-radius:8px;cursor:pointer}
+#pause-menu{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);backdrop-filter:blur(8px);z-index:25;flex-direction:column;gap:16px}
+#pause-menu h2{font:bold 28px monospace;color:#fff;margin-bottom:12px;letter-spacing:2px}
+#pause-menu button{font:bold 16px monospace;color:#1a1a2e;background:#ffd54f;border:none;padding:12px 40px;border-radius:8px;cursor:pointer;min-width:200px}
+#pause-menu button:hover{background:#ffe082;transform:scale(1.05)}
+#pause-menu button.secondary{background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.3)}
+#pause-menu button.secondary:hover{background:rgba(255,255,255,0.2)}
+#pause-menu button.danger{background:#ef5350;color:#fff}
+#pause-menu button.danger:hover{background:#f44336}
+#pause-confirm{display:none;position:absolute;inset:0;align-items:center;justify-content:center;background:rgba(0,0,0,0.8);z-index:26;flex-direction:column;gap:12px}
+#pause-confirm p{color:#fff;font:16px monospace;text-align:center}
+#pause-confirm .btn-row{display:flex;gap:12px}
 </style>
 </head>
 <body>
@@ -55,6 +66,7 @@ canvas{display:block;position:absolute;top:0;left:0}
 <div id="ui">
   <div id="hud">
     <span class="timer" id="hud-timer">5:00</span>
+    <button id="hud-pause" onclick="togglePause()" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);color:#fff;font:12px monospace;padding:2px 8px;border-radius:4px;cursor:pointer;margin-left:6px">⏸</button>
     <span class="level" id="hud-level">Lv.1</span>
     <span class="gold" id="hud-gold">0</span>
     <div class="hp" id="hud-hp"></div>
@@ -100,6 +112,20 @@ canvas{display:block;position:absolute;top:0;left:0}
     <div class="result-title" id="result-title"></div>
     <div class="stats" id="result-stats"></div>
     <button onclick="restartGame()">再来一局</button>
+  </div>
+
+  <div id="pause-menu">
+    <h2>⏸ 暂停</h2>
+    <button id="resume-btn" onclick="resumeGame()">▶ 继续游戏</button>
+    <button id="sound-btn" class="secondary" onclick="toggleSound()">🔊 音效：开</button>
+    <button id="quit-btn" class="danger" onclick="confirmQuit()">🏠 返回标题</button>
+  </div>
+  <div id="pause-confirm">
+    <p>确定返回标题？<br>当前进度将丢失</p>
+    <div class="btn-row">
+      <button class="danger" onclick="quitToTitle()">确定</button>
+      <button class="secondary" onclick="cancelQuit()">取消</button>
+    </div>
   </div>
 </div>
 <script>
@@ -1527,7 +1553,11 @@ resize();
 const keys={};
 const joystickInput={x:0,y:0};
 let joystickActive=false;
-document.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.code==='Space'&&game&&!game.paused&&!game.over){e.preventDefault();game.player.dash();}});
+document.addEventListener('keydown',e=>{
+  keys[e.key.toLowerCase()]=true;
+  if(e.code==='Space'&&game&&!game.paused&&!game.over){e.preventDefault();game.player.dash();}
+  if((e.key==='Escape'||e.key.toLowerCase()==='p')&&game&&!game.over){e.preventDefault();togglePause();}
+});
 document.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
 
 const joystickEl=document.getElementById('joystick');
@@ -1693,7 +1723,54 @@ function showScene(id){
   document.getElementById('minimap').style.display=show?'none':'block';
   if(isMobile)joystickEl.style.display=show?'none':'block';
   if(isMobile)dashBtnEl.style.display=show?'none':'flex';
+  document.getElementById('pause-menu').style.display='none';
+  document.getElementById('pause-confirm').style.display='none';
 }
+
+// Pause system
+const pauseMenuEl=document.getElementById('pause-menu');
+const soundBtnEl=document.getElementById('sound-btn');
+function togglePause(){
+  if(!game||game.over)return;
+  if(game.paused&&pauseMenuEl.style.display==='flex'){
+    resumeGame();
+  }else if(!game.paused){
+    game.paused=true;
+    pauseMenuEl.style.display='flex';
+    updateSoundBtn();
+  }
+}
+function resumeGame(){
+  if(!game)return;
+  game.paused=false;
+  pauseMenuEl.style.display='none';
+  document.getElementById('pause-confirm').style.display='none';
+}
+function updateSoundBtn(){
+  soundBtnEl.textContent=SFX.enabled?'🔊 音效：开':'🔇 音效：关';
+}
+function toggleSound(){
+  SFX.enabled=!SFX.enabled;
+  updateSoundBtn();
+  // Persist to save
+  const d=Save.load();d.sfxEnabled=SFX.enabled;Save.save(d);
+}
+function confirmQuit(){
+  document.getElementById('pause-confirm').style.display='flex';
+}
+function cancelQuit(){
+  document.getElementById('pause-confirm').style.display='none';
+}
+function quitToTitle(){
+  game=null;
+  pauseMenuEl.style.display='none';
+  document.getElementById('pause-confirm').style.display='none';
+  showScene('title-screen');
+  updateTitleStats();
+}
+
+// Restore SFX preference from save
+(function(){const d=Save.load();if(d.sfxEnabled===false)SFX.enabled=false;})();
 
 function startGame(){
   SFX.init();
@@ -1751,6 +1828,8 @@ function updateTitleStats(){
 
 function endGame(won){
   game.over=true;game.won=won;
+  pauseMenuEl.style.display='none';
+  document.getElementById('pause-confirm').style.display='none';
   SFX.play(won?'victory':'gameover');
   // Save record
   const saveResult=Save.record(game.player.kills,game.elapsed,game.player.charId);

@@ -20,8 +20,32 @@
 | P1 | ~~冲刺闪避系统（Space键冲刺+无敌帧+残影+冷却）~~ | **✅ 已完成 v0.12.0** |
 | P1 | ~~被动道具扩展（暴击/生命结晶/再生 3种新被动）~~ | **✅ 已完成 v0.13.0** |
 | P1 | ~~移动端冲刺按钮（虚拟DASH按键）~~ | **✅ 已完成 v0.13.0** |
+| P1 | ~~暂停菜单系统（Escape/P+继续/音效开关/返回标题）~~ | **✅ 已完成 v0.14.0** |
 | P2 | PWA 离线支持（Service Worker缓存） | 待评估 |
 | P2 | PWA 离线支持（Service Worker缓存） | 待评估 |
+
+---
+
+## 2026-04-03 — v0.14.0 暂停菜单系统
+
+### 成果
+- **暂停触发**：Escape / P 键 → `togglePause()`，HUD ⏸ 按钮也可触发
+- **暂停菜单 `#pause-menu`**：居中半透明暗色面板 + 毛玻璃效果
+  - ▶ 继续游戏：`resumeGame()`
+  - 🔊 音效开关：`toggleSound()` 持久化到 `localStorage`
+  - 🏠 返回标题：二次确认对话框 `#pause-confirm`
+- **确认对话框**：`#pause-confirm` 覆盖层，确定/取消按钮
+- **游戏循环**：`game.paused=true` 时跳过 update（已有逻辑）
+- **endGame 集成**：游戏结束时隐藏暂停菜单
+- **showScene 集成**：切换场景时隐藏暂停菜单
+- **音效偏好持久化**：从 Save 系统恢复 `sfxEnabled`
+
+### 技术细节
+- `togglePause()` 检查 `game.over` 防止游戏结束后暂停
+- `quitToTitle()` 清空 `game=null` 并返回标题画面
+- 音效偏好存储在 Save 数据的 `sfxEnabled` 字段
+- 页面加载时自动恢复音效偏好（IIFE）
+- 重复的 PWA 条目合并为一条
 
 ---
 
