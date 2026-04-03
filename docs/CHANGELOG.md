@@ -2,6 +2,18 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [0.14.0] - 2026-04-03
+
+### Added
+- **暂停菜单系统**：Escape/P键或HUD⏸按钮暂停游戏
+  - 继续游戏（恢复游戏）
+  - 音效开关（持久化到localStorage）
+  - 返回标题（二次确认对话框，防误操作）
+- **HUD暂停按钮**：计时器右侧⏸按钮，桌面/移动端均可用
+
+### QA
+- E2E 测试 13/14 通过（1个时序相关 flaky，非回归）
+
 ## [0.13.0] - 2026-04-03
 
 ### Added

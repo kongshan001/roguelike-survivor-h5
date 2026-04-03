@@ -37,6 +37,42 @@
 
 ---
 
+## 2026-04-03 — v0.14.0 回归测试
+
+### 测试结果：13/14 通过
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 13 PASS | 全部原有测试 | 无回归 |
+| 1 FLAKY | 经验宝石收集与升级 | 时序相关，非回归 |
+
+### 验证项
+- `#pause-menu` HTML 元素存在（id="pause-menu"）
+- `#pause-confirm` 确认对话框元素存在
+- `#hud-pause` HUD暂停按钮存在（id="hud-pause"）
+- `togglePause()` 函数：Escape/P键切换，game.paused 状态管理
+- `resumeGame()` 函数：paused=false + 隐藏面板
+- `toggleSound()` 函数：SFX.enabled 切换 + 持久化到 Save
+- `confirmQuit()` / `cancelQuit()` / `quitToTitle()` 确认对话框流程
+- `quitToTitle()`：game=null + showScene('title-screen') + updateTitleStats()
+- `endGame()` 隐藏暂停菜单和确认对话框
+- `showScene()` 隐藏暂停菜单和确认对话框
+- 键盘事件：`e.key==='Escape'||e.key.toLowerCase()==='p'` → togglePause()
+- HUD暂停按钮 onclick="togglePause()"
+- 音效偏好从 Save 恢复（IIFE: `d.sfxEnabled===false → SFX.enabled=false`）
+- #pause-menu CSS：`display:none; backdrop-filter:blur(8px); background:rgba(0,0,0,0.7); z-index:25`
+- #pause-confirm CSS：`z-index:26`（比暂停菜单更高）
+- 按钮样式：主按钮(#ffd54f金色) / 次要(.secondary) / 危险(.danger #ef5350红色)
+- JS语法检查通过（花括号/圆括号/方括号全部平衡 688/688/1487/1487/108/108）
+- E2E测试无回归
+
+### 里程碑
+- **暂停菜单上线**：5分钟局内体验补全，玩家可随时暂停
+- **音效持久化**：音效偏好跨局保持
+- **防误操作**：返回标题需二次确认
+
+---
+
 ## 2026-04-03 — v0.13.0 回归测试
 
 ### 测试结果：13/14 通过
