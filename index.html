@@ -343,18 +343,37 @@ class Enemy{
       ctx.fillStyle='#212121';ctx.fillRect(x+4,y+2,2,3);ctx.fillRect(x+8,y+2,2,3);
       ctx.fillStyle='#4e342e';ctx.fillRect(x+12,y+4,3,8);
     }else if(this.type==='boss'){
-      // Large red dragon
-      ctx.fillStyle='#d32f2f';ctx.fillRect(x,y,this.w,this.h);
-      ctx.fillStyle='#b71c1c';ctx.fillRect(x+2,y+2,28,28);
+      // Phase-based color scheme
+      let bodyColor,innerColor,wingColor,eyeColor,hornColor;
+      if(this.phase===3){
+        // Phase 3: dark crimson pulsing
+        const pulse=Math.sin(Date.now()*0.008)*0.3+0.7;
+        bodyColor=`rgba(136,14,79,${pulse})`;innerColor='#880e4f';
+        wingColor='#ad1457';eyeColor='#ff1744';hornColor='#d50000';
+      }else if(this.phase===2){
+        // Phase 2: dark orange rage
+        bodyColor='#e65100';innerColor='#bf360c';
+        wingColor='#d84315';eyeColor='#ff6d00';hornColor='#ff3d00';
+      }else{
+        // Phase 1: classic red
+        bodyColor='#d32f2f';innerColor='#b71c1c';
+        wingColor='#c62828';eyeColor='#ffeb3b';hornColor='#ff6f00';
+      }
+      // Body
+      ctx.fillStyle=bodyColor;ctx.fillRect(x,y,this.w,this.h);
+      ctx.fillStyle=innerColor;ctx.fillRect(x+2,y+2,28,28);
       // Horns
-      ctx.fillStyle='#ff6f00';ctx.fillRect(x+2,y-6,4,8);ctx.fillRect(x+26,y-6,4,8);
+      ctx.fillStyle=hornColor;ctx.fillRect(x+2,y-6,4,8);ctx.fillRect(x+26,y-6,4,8);
       // Wings
-      ctx.fillStyle='#c62828';ctx.fillRect(x-8,y+6,10,16);ctx.fillRect(x+30,y+6,10,16);
+      ctx.fillStyle=wingColor;ctx.fillRect(x-8,y+6,10,16);ctx.fillRect(x+30,y+6,10,16);
       // Eyes
-      ctx.fillStyle='#ffeb3b';ctx.fillRect(x+8,y+8,5,5);ctx.fillRect(x+19,y+8,5,5);
+      ctx.fillStyle=eyeColor;ctx.fillRect(x+8,y+8,5,5);ctx.fillRect(x+19,y+8,5,5);
       ctx.fillStyle='#000';ctx.fillRect(x+10,y+10,2,2);ctx.fillRect(x+21,y+10,2,2);
-      // Mouth
+      // Mouth - phase 3: open mouth with fire
       ctx.fillStyle='#fff';ctx.fillRect(x+8,y+20,16,4);
+      if(this.phase===3){
+        ctx.fillStyle='#ff6d00';ctx.fillRect(x+9,y+24,3,3);ctx.fillRect(x+15,y+24,3,3);ctx.fillRect(x+21,y+24,3,3);
+      }
       ctx.fillStyle='#000';ctx.fillRect(x+10,y+20,2,4);ctx.fillRect(x+14,y+20,2,4);ctx.fillRect(x+18,y+20,2,4);ctx.fillRect(x+22,y+20,2,4);
       // HP bar
       ctx.fillStyle='#333';ctx.fillRect(x,y-12,this.w,6);
