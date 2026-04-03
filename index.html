@@ -77,6 +77,15 @@ canvas{display:block;position:absolute;top:0;left:0}
     </div>
   </div>
 
+  <div id="char-select">
+    <h2>选择你的英雄</h2>
+    <div class="ws-cards">
+      <div class="ws-card" onclick="pickChar('mage')"><div class="icon">🧙</div><div class="name">魔法师</div><div class="desc">均衡型 · HP 8<br>自选初始武器</div></div>
+      <div class="ws-card" onclick="pickChar('warrior')"><div class="icon">🛡</div><div class="name">战士</div><div class="desc">坦克型 · HP 12<br>初始武器：飞刀</div></div>
+      <div class="ws-card" onclick="pickChar('ranger')"><div class="icon">🏹</div><div class="name">游侠</div><div class="desc">速攻型 · HP 6<br>初始武器：圣水</div></div>
+    </div>
+  </div>
+
   <div id="upgrade-panel">
     <h2>⬆ LEVEL UP! ⬆</h2>
     <div class="upg-cards" id="upg-cards"></div>
@@ -151,6 +160,11 @@ const CFG = {
       { type:'speed', icon:'⚡', value:0.5, duration:10, desc:'移速+50% 10秒' },
       { type:'exp', icon:'💎', value:20, desc:'+20经验' }
     ]
+  },
+  CHARACTERS: {
+    mage:    { name:'魔法师', icon:'🧙', hp:8, speed:160, desc:'均衡型，自选初始武器', chooseWeapon:true, colors:{hat:'#1a237e',body:'#1565c0',skin:'#ffe0b2',staff:'#795548',gem:'#ffd54f'} },
+    warrior: { name:'战士',   icon:'🛡', hp:12,speed:140, desc:'高血量坦克，初始飞刀', startWeapon:'knife', colors:{hat:'#b71c1c',body:'#d32f2f',skin:'#ffe0b2',sword:'#9e9e9e',hilt:'#5d4037'} },
+    ranger:  { name:'游侠',   icon:'🏹', hp:6, speed:190, desc:'高速低血，初始圣水', startWeapon:'holywater', colors:{hood:'#1b5e20',body:'#2e7d32',skin:'#ffe0b2',bow:'#795548',string:'#bdbdbd'} }
   }
 };
 
@@ -201,6 +215,7 @@ class Player{
     this.weapons=[];this.passives={};
     this.facingAngle=0; // direction player faces (radians)
     this._speedBoost=0;this._speedBoostTimer=0; // temporary speed boost
+    this.charId='mage'; // default, overridden by beginGame
   }
   update(dt,input){
     if(this._speedBoostTimer>0){this._speedBoostTimer-=dt;if(this._speedBoostTimer<=0)this._speedBoost=0;}
@@ -235,27 +250,49 @@ class Player{
     if(this.invTimer>0 && Math.floor(this.invTimer*10)%2===0)return;
     const s=cam.w2s(this.x,this.y,canvas);
     const x=s.x-this.w/2, y=s.y-this.h/2;
-    // Hat
-    ctx.fillStyle='#1a237e';
-    ctx.fillRect(x+2,y-6,12,6);
-    ctx.fillRect(x+4,y-10,8,4);
-    ctx.fillRect(x+5,y-12,6,2);
-    // Body/robe
-    ctx.fillStyle='#1565c0';
-    ctx.fillRect(x+2,y,12,10);
-    ctx.fillRect(x+1,y+10,14,4);
-    // Face
-    ctx.fillStyle='#ffe0b2';
-    ctx.fillRect(x+5,y+1,6,4);
-    // Eyes
-    ctx.fillStyle='#000';
-    ctx.fillRect(x+6,y+2,2,2);
-    ctx.fillRect(x+9,y+2,2,2);
-    // Staff
-    ctx.fillStyle='#795548';
-    ctx.fillRect(x+14,y-2,2,16);
-    ctx.fillStyle='#ffd54f';
-    ctx.fillRect(x+13,y-4,4,3);
+    const c=this.charId||'mage';
+    if(c==='mage'){
+      // Hat
+      ctx.fillStyle='#1a237e';ctx.fillRect(x+2,y-6,12,6);ctx.fillRect(x+4,y-10,8,4);ctx.fillRect(x+5,y-12,6,2);
+      // Body/robe
+      ctx.fillStyle='#1565c0';ctx.fillRect(x+2,y,12,10);ctx.fillRect(x+1,y+10,14,4);
+      // Face
+      ctx.fillStyle='#ffe0b2';ctx.fillRect(x+5,y+1,6,4);
+      // Eyes
+      ctx.fillStyle='#000';ctx.fillRect(x+6,y+2,2,2);ctx.fillRect(x+9,y+2,2,2);
+      // Staff
+      ctx.fillStyle='#795548';ctx.fillRect(x+14,y-2,2,16);
+      ctx.fillStyle='#ffd54f';ctx.fillRect(x+13,y-4,4,3);
+    }else if(c==='warrior'){
+      // Helmet
+      ctx.fillStyle='#b71c1c';ctx.fillRect(x+1,y-8,14,8);ctx.fillRect(x+3,y-10,10,3);
+      // Visor slit
+      ctx.fillStyle='#ffd54f';ctx.fillRect(x+4,y-4,8,2);
+      // Body armor
+      ctx.fillStyle='#d32f2f';ctx.fillRect(x+1,y,14,10);ctx.fillRect(x,y+10,16,4);
+      // Belt
+      ctx.fillStyle='#5d4037';ctx.fillRect(x+2,y+8,12,2);
+      // Face
+      ctx.fillStyle='#ffe0b2';ctx.fillRect(x+5,y+1,6,4);
+      // Eyes
+      ctx.fillStyle='#000';ctx.fillRect(x+6,y+2,2,2);ctx.fillRect(x+9,y+2,2,2);
+      // Sword
+      ctx.fillStyle='#9e9e9e';ctx.fillRect(x+14,y-4,2,14);
+      ctx.fillStyle='#5d4037';ctx.fillRect(x+13,y+6,4,3);
+      ctx.fillStyle='#e0e0e0';ctx.fillRect(x+14,y-6,2,3);
+    }else if(c==='ranger'){
+      // Hood
+      ctx.fillStyle='#1b5e20';ctx.fillRect(x+2,y-6,12,6);ctx.fillRect(x+3,y-8,10,3);
+      // Body/cloak
+      ctx.fillStyle='#2e7d32';ctx.fillRect(x+2,y,12,10);ctx.fillRect(x+1,y+10,14,4);
+      // Face
+      ctx.fillStyle='#ffe0b2';ctx.fillRect(x+5,y+1,6,4);
+      // Eyes
+      ctx.fillStyle='#000';ctx.fillRect(x+6,y+2,2,2);ctx.fillRect(x+9,y+2,2,2);
+      // Bow
+      ctx.fillStyle='#795548';ctx.fillRect(x+14,y-2,2,14);
+      ctx.fillStyle='#bdbdbd';ctx.fillRect(x+15,y-2,1,14);
+    }
   }
 }
 
@@ -1251,10 +1288,10 @@ function getSpawnRate(elapsed){
 
 // Scene management
 function showScene(id){
-  ['title-screen','weapon-select','upgrade-panel','result-screen'].forEach(s=>{
+  ['title-screen','char-select','weapon-select','upgrade-panel','result-screen'].forEach(s=>{
     document.getElementById(s).style.display=s===id?'flex':'none';
   });
-  const show=id==='weapon-select'||id==='title-screen'||id==='result-screen';
+  const show=id==='weapon-select'||id==='char-select'||id==='title-screen'||id==='result-screen';
   document.getElementById('hud').style.display=show?'none':'flex';
   document.getElementById('exp-bar-wrap').style.display=show?'none':'block';
   document.getElementById('minimap').style.display=show?'none':'block';
@@ -1262,12 +1299,31 @@ function showScene(id){
 }
 
 function startGame(){
-  showScene('weapon-select');
+  showScene('char-select');
+}
+
+let selectedChar=null;
+
+function pickChar(charId){
+  const ch=CFG.CHARACTERS[charId];
+  selectedChar={id:charId,...ch};
+  if(ch.chooseWeapon){
+    showScene('weapon-select');
+  }else{
+    beginGame(ch.startWeapon);
+  }
 }
 
 function pickWeapon(name){
+  beginGame(name);
+}
+
+function beginGame(weaponName){
+  const ch=selectedChar;
   const p=new Player();
-  p.weapons.push(new WEAPON_CLASSES[name](p));
+  p.hp=ch.hp;p.maxHp=ch.hp;p.speed=ch.speed;
+  p.charId=ch.id;
+  p.weapons.push(new WEAPON_CLASSES[weaponName](p));
   game={
     player:p,camera:new Camera(),enemies:[],bullets:[],gems:[],foods:[],chests:[],
     effects:[],dmgTexts:[],screenFlash:0,elapsed:0,paused:false,over:false,won:false,bossSpawned:false,
