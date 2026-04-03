@@ -2,6 +2,19 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [0.4.2] - 2026-04-03
+
+### Added
+- **第二条进化路线**：飞刀 Lv.3 + 火焰法杖 Lv.3 → 火焰飞刀
+  - 5把火焰飞刀，280px/s，伤害3，穿透2次
+  - 命中附加燃烧：3/s持续2秒
+  - 投掷间隔0.5s（快于普通飞刀0.7s）
+- **进化系统修复**：进化应用改为通用 `WEAPON_CLASSES[evo.result]`，不再硬编码
+- **火焰飞刀视觉**：橙色刀身 + 火焰尾迹 + 黄色亮尖
+
+### QA
+- E2E 测试 13/14 通过（1个时序相关 flaky，非回归）
+
 ## [0.4.1] - 2026-04-03
 
 ### Added
