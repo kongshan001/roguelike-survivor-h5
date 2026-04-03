@@ -2,6 +2,22 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [0.19.0] - 2026-04-03
+
+### Added
+- **难度选择系统**：休闲🌿/标准⚔️/噩梦💀 三档难度
+  - 12个难度参数：玩家HP/移速、敌人HP/速度/伤害、生成间隔/数量、Boss HP/速度、经验倍率、食物掉率
+  - 角色选择 → 难度选择 → 武器选择(如有) → 游戏
+  - `#diff-select` 界面（复用 `.ws-card` 样式）
+  - 三色方案：绿(休闲)/金(标准)/红(噩梦)
+- **6个应用点**：beginGame/spawn/takeDamage/addExp/foodDrop/bossSpawn
+
+### Fixed
+- E2E 测试适配难度选择流程（`startGameWithWeapon` 新增 diff-select 步骤）
+
+### QA
+- E2E 测试 13/14 通过（1个时序相关 flaky，非回归）
+
 ## [0.18.0] - 2026-04-03
 
 ### Added

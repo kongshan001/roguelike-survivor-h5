@@ -37,6 +37,38 @@
 
 ---
 
+## 2026-04-03 — v0.19.0 回归测试
+
+### 测试结果：13/14 通过
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 13 PASS | 全部原有测试 | 无回归 |
+| 1 FLAKY | 经验宝石收集与升级 | 时序相关，非回归 |
+
+### 验证项
+- `CFG.DIFFICULTY` 三档配置正确（easy/normal/hard，各12参数）
+- `#diff-select` HTML 元素存在，3张难度卡片（🌿/⚔️/💀）
+- `selectedDiff='normal'` 默认值正确
+- `pickDiff(diff)` 函数存在，设置 `selectedDiff` 并路由到武器选择或直接开始
+- `pickChar()` 两个分支都进入 `diff-select`（非直接进入 `weapon-select`）
+- `beginGame()` 应用 `diff.playerHpMul`/`playerSpeedMul` — 代码审查确认
+- 敌人生成 `hpMul *= diff.enemyHpMul`, `spdMul *= diff.enemySpeedMul` — 代码审查确认
+- `takeDamage()` 中 `Math.ceil(d*dMul) - armor` — 代码审查确认
+- `addExp()` 中 `amount * bonus * diff.expMul` — 代码审查确认
+- 食物掉率 `dropRate * diff.foodDropMul` — 代码审查确认
+- Boss `new Enemy('boss', ..., diff.bossHpMul, diff.bossSpeedMul)` — 代码审查确认
+- `showScene()` 包含 `'diff-select'` 场景切换
+- E2E测试修复：`startGameWithWeapon()` 新增 diff-select 步骤（点击标准难度卡片）
+- JS语法检查通过
+
+### 里程碑
+- **难度选择系统上线**：休闲🌿/标准⚔️/噩梦💀 三档难度，影响12个游戏参数
+- **游戏流程扩展**：角色选择 → 难度选择 → 武器选择 → 游戏
+- **E2E测试适配**：测试流程同步更新，13/14通过
+
+---
+
 ## 2026-04-03 — v0.18.0 回归测试
 
 ### 测试结果：13/14 通过

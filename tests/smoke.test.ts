@@ -40,6 +40,9 @@ async function startGameWithWeapon(page: Page, weapon: 'holywater' | 'knife' | '
   // Select mage (first card in char-select) — mage allows weapon choice
   await page.locator('#char-select .ws-card').first().click();
   await page.waitForTimeout(300);
+  // Select difficulty (normal — middle card)
+  await page.locator('#diff-select .ws-card').nth(1).click();
+  await page.waitForTimeout(300);
   // Now select weapon
   const weaponIndex = { holywater: 0, knife: 1, lightning: 2 };
   const cards = page.locator('#weapon-select .ws-card');
