@@ -2,6 +2,17 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [0.4.1] - 2026-04-03
+
+### Added
+- **食物回血系统**：敌人死亡概率掉落食物（🍖🍇🧀），拾取回复1HP
+  - 10%掉落率，Boss必掉3个
+  - 满血拾取显示💚，回血拾取显示❤️+1
+  - 15秒存活时间，最后3秒渐隐
+
+### QA
+- E2E 测试 13/14 通过（1个时序相关 flaky，非回归）
+
 ## [0.4.0] - 2026-04-03
 
 ### Added
