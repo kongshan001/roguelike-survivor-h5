@@ -114,10 +114,12 @@ const CFG = {
     lightning: { name:'闪电', icon:'⚡', desc:'随机电击' },
     bible:     { name:'圣经', icon:'📖', desc:'范围旋转' },
     firestaff: { name:'火焰法杖', icon:'🔥', desc:'锥形火焰' },
-    thunderholywater: { name:'雷暴圣水', icon:'⚡💧', desc:'旋转+链式闪电', evolved:true }
+    thunderholywater: { name:'雷暴圣水', icon:'⚡💧', desc:'旋转+链式闪电', evolved:true },
+    fireknife: { name:'火焰飞刀', icon:'🔥🗡', desc:'燃烧穿透飞刀', evolved:true }
   },
   EVOLUTIONS: [
-    { a:'holywater', b:'lightning', result:'thunderholywater', name:'雷暴圣水', icon:'⚡💧', desc:'旋转+链式闪电' }
+    { a:'holywater', b:'lightning', result:'thunderholywater', name:'雷暴圣水', icon:'⚡💧', desc:'旋转+链式闪电' },
+    { a:'knife', b:'firestaff', result:'fireknife', name:'火焰飞刀', icon:'🔥🗡', desc:'燃烧穿透飞刀' }
   ],
   PASSIVES: {
     speedboots: { name:'疾风靴', icon:'👢', desc:'移动速度+15%', maxStack:3 },
@@ -851,6 +853,42 @@ class ThunderHolyWater extends Weapon{
   }
 }
 
+class FireKnife extends Weapon{
+  constructor(owner){super('fireknife',owner);this.timer=0}
+  get maxLevel(){return 1}
+  get count(){return 5}
+  get dmg(){return 3}
+  get pierce(){return 2}
+  get burnDps(){return 3}
+  get burnDur(){return 2}
+  get cd(){return 0.5}
+  update(dt,enemies,bullets){
+    this.timer-=dt;
+    if(this.timer<=0){
+      this.timer=this.cd;
+      let nearest=null, nd=Infinity;
+      for(const e of enemies){
+        const d=dist(this.owner,e);
+        if(d<nd){nd=d;nearest=e;}
+      }
+      if(nearest){
+        for(let i=0;i<this.count;i++){
+          const dir=new V(nearest.x-this.owner.x,nearest.y-this.owner.y).norm();
+          const spread=i>0?(i%2===1?0.12:-0.12)*(Math.ceil(i/2)):0;
+          const cos=Math.cos(spread),sin=Math.sin(spread);
+          const dx=dir.x*cos-dir.y*sin;
+          const dy=dir.x*sin+dir.y*cos;
+          if(bullets.length<CFG.MAX_BULLETS){
+            bullets.push({x:this.owner.x,y:this.owner.y,vx:dx*280,vy:dy*280,
+              w:6,h:4,dmg:this.dmg,life:1.8,color:'#ff6d00',pierce:this.pierce,hit:new Set(),
+              burnDmg:this.burnDps,burnDur:this.burnDur});
+          }
+        }
+      }
+    }
+  }
+}
+
 // ===== GAME =====
 const canvas=document.getElementById('c');
 const ctx=canvas.getContext('2d');
@@ -934,7 +972,7 @@ function getInput(){
 }
 
 // Upgrade system
-const WEAPON_CLASSES={holywater:HolyWater,knife:Knife,lightning:Lightning,bible:Bible,firestaff:FireStaff,thunderholywater:ThunderHolyWater};
+const WEAPON_CLASSES={holywater:HolyWater,knife:Knife,lightning:Lightning,bible:Bible,firestaff:FireStaff,thunderholywater:ThunderHolyWater,fireknife:FireKnife};
 
 function generateUpgrades(player){
   const pool=[];
@@ -981,7 +1019,7 @@ function generateUpgrades(player){
         badge:'进化',badgeColor:'#ff9100',
         apply:()=>{
           player.weapons=player.weapons.filter(w=>w!==wA&&w!==wB);
-          player.weapons.push(new ThunderHolyWater(player));
+          player.weapons.push(new WEAPON_CLASSES[evo.result](player));
         }});
     }
   }
@@ -1179,6 +1217,7 @@ function loop(time){
       else if(w instanceof Bible)w.update(dt,game.enemies);
       else if(w instanceof FireStaff)w.update(dt,game.enemies);
       else if(w instanceof ThunderHolyWater)w.update(dt,game.enemies);
+      else if(w instanceof FireKnife)w.update(dt,game.enemies,game.bullets);
     }
 
     // Update bullets
@@ -1189,12 +1228,18 @@ function loop(time){
         game.bullets.splice(i,1);continue;
       }
       // Player bullets hit enemies
-      if(b.color==='#ffd54f'){ // knife
+      if(b.color==='#ffd54f'||b.burnDmg){ // knife or fireknife
         for(let j=game.enemies.length-1;j>=0;j--){
           const e=game.enemies[j];
           if(b.hit&&b.hit.has(e))continue;
           if(Math.abs(b.x-e.x)<(b.w+e.w)/2&&Math.abs(b.y-e.y)<(b.h+e.h)/2){
             e.hp-=b.dmg;
+            // Apply burn
+            if(b.burnDmg){
+              if(!e._burn)e._burn={dmg:0,t:0};
+              e._burn.dmg=b.burnDmg;
+              e._burn.t=b.burnDur||2;
+            }
             if(b.hit)b.hit.add(e);
             if(!b.pierce||b.hit.size>b.pierce){
               game.bullets.splice(i,1);
