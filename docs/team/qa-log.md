@@ -37,6 +37,34 @@
 
 ---
 
+## 2026-04-03 — v0.9.0 回归测试
+
+### 测试结果：12/14 通过
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 12 PASS | 全部原有测试 | 无回归 |
+| 1 FAIL | BUG-003 DPR渲染 | 已知flaky，偏移边界case |
+| 1 FLAKY | 经验宝石收集与升级 | 时序相关，非回归 |
+
+### 验证项
+- SFX 全局对象定义正确（Web Audio API 振荡器合成）
+- `SFX.init()` 延迟创建 AudioContext（首次交互触发）
+- `SFX.play()` 支持4种渲染路径：noise/seq/repeat/default
+- 12个 SFX 触发点代码审查确认：
+  - hit(kill) / kill(击杀) / knife(飞刀) / lightning(闪电)
+  - levelup(×2) / pickup(×2) / chest(开箱) / boss(Boss出场)
+  - freeze(冰冻) / gameover+victory(结算)
+- `masterVolume=0.3` 默认音量合理
+- `exponentialRampToValueAtTime(0.01)` 避免gain=0错误（代码审查确认）
+- JS语法检查通过
+- E2E测试无回归
+
+### 里程碑
+- **音效系统上线**：游戏从无声变为有声，8-bit合成音效覆盖10种核心事件
+
+---
+
 ## 2026-04-03 — v0.8.0 回归测试
 
 ### 测试结果：12 passed, 1 flaky

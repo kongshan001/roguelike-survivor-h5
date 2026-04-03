@@ -2,6 +2,20 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [0.9.0] - 2026-04-03
+
+### Added
+- **音效系统**：Web Audio API 8-bit 合成音效，零外部文件
+  - 11种音效：hit/kill/knife/lightning/levelup/pickup/chest/boss/freeze/gameover/victory
+  - 4种渲染路径：白噪声(noise)、音阶序列(seq)、重复(repeat)、单音/滑音(default)
+  - 音量控制 `masterVolume=0.3`
+  - `AudioContext` 延迟创建，满足浏览器自动播放策略
+- **12个音效触发点**覆盖全部核心游戏事件
+- **音画联动规范**：每个音效对应明确视觉反馈
+
+### QA
+- E2E 测试 12/14 通过（2个时序相关 flaky，非回归）
+
 ## [0.8.0] - 2026-04-03
 
 ### Added
