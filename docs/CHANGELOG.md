@@ -2,6 +2,19 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [0.15.0] - 2026-04-03
+
+### Added
+- **第7种敌人：精英骷髅 (Elite Skeleton)**
+  - 18×18px，12HP，深红色骨架，金色皇冠标记
+  - 3方向扇形射击（±15°），1.2秒CD，每发1.5伤害
+  - 3分30秒后混入生成池
+  - 击杀掉落5宝石+🧀奶酪
+- **射击系统重构**：支持精英敌人扇形弹幕模式
+
+### QA
+- E2E 测试 13/14 通过（1个时序相关 flaky，非回归）
+
 ## [0.14.0] - 2026-04-03
 
 ### Added
