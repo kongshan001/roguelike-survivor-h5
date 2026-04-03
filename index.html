@@ -63,6 +63,7 @@ canvas{display:block;position:absolute;top:0;left:0}
   <div id="joystick"><div id="joystick-knob"></div></div>
 
   <div id="title-screen">
+    <div id="title-stats" style="color:#888;font:12px monospace;margin-bottom:8px;min-height:16px"></div>
     <h1>肉鸽幸存者</h1>
     <div class="sub">5分钟，活下来</div>
     <button onclick="startGame()">开始游戏</button>
@@ -164,10 +165,18 @@ const CFG = {
       { type:'exp', icon:'💎', value:20, desc:'+20经验' }
     ]
   },
+  SAVE: {
+    key: 'roguelike_survivor_save',
+    version: 1
+  },
   CHARACTERS: {
     mage:    { name:'魔法师', icon:'🧙', hp:8, speed:160, desc:'均衡型，自选初始武器', chooseWeapon:true, colors:{hat:'#1a237e',body:'#1565c0',skin:'#ffe0b2',staff:'#795548',gem:'#ffd54f'} },
     warrior: { name:'战士',   icon:'🛡', hp:12,speed:140, desc:'高血量坦克，初始飞刀', startWeapon:'knife', colors:{hat:'#b71c1c',body:'#d32f2f',skin:'#ffe0b2',sword:'#9e9e9e',hilt:'#5d4037'} },
     ranger:  { name:'游侠',   icon:'🏹', hp:6, speed:190, desc:'高速低血，初始圣水', startWeapon:'holywater', colors:{hood:'#1b5e20',body:'#2e7d32',skin:'#ffe0b2',bow:'#795548',string:'#bdbdbd'} }
+  },
+  SAVE: {
+    key: 'roguelike_survivor_save',
+    version: 1
   }
 };
 
@@ -270,6 +279,31 @@ class V{
   dist(v){return this.sub(v).len()}
   clone(){return new V(this.x,this.y)}
 }
+
+// ===== Save System =====
+const Save={
+  _default(){return{version:CFG.SAVE.version,bestScore:0,bestTime:0,totalKills:0,gamesPlayed:0,characters:{mage:{bestScore:0,bestTime:0},warrior:{bestScore:0,bestTime:0},ranger:{bestScore:0,bestTime:0}}}},
+  load(){
+    try{const raw=localStorage.getItem(CFG.SAVE.key);if(!raw)return this._default();const d=JSON.parse(raw);if(d.version!==CFG.SAVE.version)return this._default();return d;}catch(e){return this._default();}
+  },
+  save(data){
+    try{localStorage.setItem(CFG.SAVE.key,JSON.stringify(data));}catch(e){}
+  },
+  record(kills,time,charId){
+    const d=this.load();
+    d.gamesPlayed++;
+    d.totalKills+=kills;
+    let newBest=false;
+    if(kills>d.bestScore){d.bestScore=kills;newBest=true;}
+    if(time>d.bestTime){d.bestTime=time;}
+    if(charId&&d.characters[charId]){
+      if(kills>d.characters[charId].bestScore)d.characters[charId].bestScore=kills;
+      if(time>d.characters[charId].bestTime)d.characters[charId].bestTime=time;
+    }
+    this.save(d);
+    return{data:d,newBest};
+  }
+};
 
 // ===== Camera =====
 class Camera{
@@ -1632,16 +1666,30 @@ function beginGame(weaponName){
 
 function restartGame(){
   showScene('title-screen');
+  updateTitleStats();
+}
+
+function updateTitleStats(){
+  const d=Save.load();
+  const el=document.getElementById('title-stats');
+  if(!el)return;
+  if(d.gamesPlayed===0){el.textContent='';return;}
+  const bm=Math.floor(d.bestTime/60),bs=Math.floor(d.bestTime%60);
+  el.innerHTML=`🏆 ${d.bestScore}杀 | ⏱ ${bm}:${bs.toString().padStart(2,'0')} | 🎮 ${d.gamesPlayed}局`;
 }
 
 function endGame(won){
   game.over=true;game.won=won;
   SFX.play(won?'victory':'gameover');
+  // Save record
+  const saveResult=Save.record(game.player.kills,game.elapsed,game.player.charId);
   document.getElementById('result-title').textContent=won?'🏆 胜利! 🏆':'💀 失败';
   document.getElementById('result-title').style.color=won?'#ffd54f':'#ef5350';
   const m=Math.floor(game.elapsed/60),s=Math.floor(game.elapsed%60);
+  const bestM=Math.floor(saveResult.data.bestTime/60),bestS=Math.floor(saveResult.data.bestTime%60);
+  const newTag=saveResult.newBest?' 🆕新纪录!':'';
   document.getElementById('result-stats').innerHTML=
-    `击杀: ${game.player.kills}<br>存活: ${m}:${s.toString().padStart(2,'0')}<br>金币: ${game.player.gold}`;
+    `击杀: ${game.player.kills}${newTag}<br>存活: ${m}:${s.toString().padStart(2,'0')}<br>金币: ${game.player.gold}<br><br>--- 最佳记录 ---<br>最高击杀: ${saveResult.data.bestScore}<br>最长存活: ${bestM}:${bestS.toString().padStart(2,'0')}<br>总游玩: ${saveResult.data.gamesPlayed}局`;
   setTimeout(()=>showScene('result-screen'),500);
 }
 
@@ -2076,6 +2124,7 @@ function loop(time){
 
 requestAnimationFrame(loop);
 showScene('title-screen');
+updateTitleStats();
 </script>
 </body>
 </html>

@@ -15,9 +15,31 @@
 | P1 | ~~第6种武器：冰冻光环（范围减速+冰冻控制）~~ | **✅ 已完成 v0.8.0** |
 | P1 | ~~音效系统（Web Audio API，8bit合成音效）~~ | **✅ 已完成 v0.9.0** |
 | P1 | ~~第4条进化路线（冰冻光环+闪电→暴风雪）~~ | **✅ 已完成 v0.10.0** |
+| P1 | ~~localStorage 存档（最高分+最佳时间+统计）~~ | **✅ 已完成 v0.11.0** |
 | P1 | 对象池优化（子弹/宝石复用，减少GC） | 待启动 |
-| P2 | localStorage 存档（最高分记录） | 待评估 |
 | P2 | PWA 离线支持（Service Worker缓存） | 待评估 |
+
+---
+
+## 2026-04-03 — v0.11.0 localStorage 存档系统
+
+### 成果
+- **Save 对象**：`Save.load()`/`Save.save(data)`/`Save.record(kills,time,charId)` API
+- **存档结构**：`{version, bestScore, bestTime, totalKills, gamesPlayed, characters:{mage:{},warrior:{},ranger:{}}}`
+- **CFG.SAVE**：`key='roguelike_survivor_save', version=1`
+- **标题画面统计**：`updateTitleStats()` 在标题画面显示"🏆 最高击杀 | ⏱ 最长存活 | 🎮 游玩次数"
+- **结算画面增强**：显示本次成绩 vs 最佳记录对比，新纪录时显示 🆕 标记
+- **首次游玩**：无存档时不显示统计（零状态）
+- **endGame 集成**：`Save.record()` 返回 `{data, newBest}` 用于 UI 更新
+- **restartGame 集成**：返回标题时自动刷新统计数据
+
+### 技术细节
+- JSON 序列化存入 `localStorage`，键名含游戏前缀避免冲突
+- `version` 字段用于未来存档迁移
+- `try/catch` 保护所有 localStorage 操作（隐私模式/满容量）
+- `gamesPlayed` 在每次 `endGame` 时递增
+- `totalKills` 累积所有局的击杀总数
+- 每角色独立记录 bestScore/bestTime
 
 ---
 
