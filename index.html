@@ -165,6 +165,13 @@ const CFG = {
       { type:'exp', icon:'💎', value:20, desc:'+20经验' }
     ]
   },
+  DASH: {
+    distance: 80,
+    duration: 0.15,
+    speedMult: 3,
+    cooldown: 2.5,
+    afterimages: 3
+  },
   SAVE: {
     key: 'roguelike_survivor_save',
     version: 1
@@ -204,7 +211,8 @@ const SFX={
       boss:     {freq:110,       dur:0.15,type:'sawtooth',repeat:3},
       freeze:   {freq:[1200,400],dur:0.15,type:'sine'},
       gameover: {freq:[440,110], dur:0.8, type:'sawtooth'},
-      victory:  {freq:[523,659,784,1047],dur:0.12,type:'square',seq:true}
+      victory:  {freq:[523,659,784,1047],dur:0.12,type:'square',seq:true},
+      dash:    {freq:[1200,300],dur:0.10,type:'sine'}
     };
     const d=defs[id];if(!d)return;
     const now=this.ctx.currentTime;
@@ -331,9 +339,35 @@ class Player{
     this.facingAngle=0; // direction player faces (radians)
     this._speedBoost=0;this._speedBoostTimer=0; // temporary speed boost
     this.charId='mage'; // default, overridden by beginGame
+    this._dashCD=0;this._dashing=false;this._dashTimer=0;
+    this._dashDir={x:0,y:0};this._afterimages=[];
   }
   update(dt,input){
     if(this._speedBoostTimer>0){this._speedBoostTimer-=dt;if(this._speedBoostTimer<=0)this._speedBoost=0;}
+    if(this._dashCD>0)this._dashCD-=dt;
+    // Afterimage fade
+    for(let i=this._afterimages.length-1;i>=0;i--){
+      this._afterimages[i].alpha-=dt*4;
+      if(this._afterimages[i].alpha<=0)this._afterimages.splice(i,1);
+    }
+    // Dashing movement
+    if(this._dashing){
+      this._dashTimer-=dt;
+      const dashSpd=this.speed*CFG.DASH.speedMult;
+      this.x+=this._dashDir.x*dashSpd*dt;
+      this.y+=this._dashDir.y*dashSpd*dt;
+      if(this._afterimages.length<CFG.DASH.afterimages){
+        this._afterimages.push({x:this.x,y:this.y,alpha:0.6});
+      }
+      if(this._dashTimer<=0){
+        this._dashing=false;
+        this._dashCD=CFG.DASH.cooldown;
+      }
+      this.x=clamp(this.x,this.w/2,CFG.MAP_W-this.w/2);
+      this.y=clamp(this.y,this.h/2,CFG.MAP_H-this.h/2);
+      if(this.invTimer>0)this.invTimer-=dt;
+      return;
+    }
     const spd=this.speed*(1+this._speedBoost);
     if(input.x||input.y){
       this.x+=input.x*spd*dt;
@@ -344,8 +378,18 @@ class Player{
     this.y=clamp(this.y,this.h/2,CFG.MAP_H-this.h/2);
     if(this.invTimer>0)this.invTimer-=dt;
   }
+  dash(){
+    if(this._dashing||this._dashCD>0)return false;
+    this._dashing=true;
+    this._dashTimer=CFG.DASH.duration;
+    this.invTimer=CFG.DASH.duration;
+    this._dashDir={x:Math.cos(this.facingAngle),y:Math.sin(this.facingAngle)};
+    this._afterimages=[];
+    SFX.play('dash');
+    return true;
+  }
   takeDamage(d){
-    if(this.invTimer>0)return false;
+    if(this.invTimer>0||this._dashing)return false;
     const realDmg=Math.max(1,d-this.armor);
     this.hp-=realDmg;
     this.invTimer=CFG.INVINCIBLE_TIME;
@@ -1460,7 +1504,7 @@ resize();
 const keys={};
 const joystickInput={x:0,y:0};
 let joystickActive=false;
-document.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true});
+document.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.code==='Space'&&game&&!game.paused&&!game.over){e.preventDefault();game.player.dash();}});
 document.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
 
 const joystickEl=document.getElementById('joystick');
@@ -2014,8 +2058,28 @@ function loop(time){
       ctx.fillRect(bs.x+e.w/2-2,bs.y-e.h/2-2,3,2);
     }
   }
-  // Player
-  game.player.draw(ctx,cam,canvas);
+  // Dash afterimages
+  for(const ai of game.player._afterimages){
+    const as=cam.w2s(ai.x,ai.y,canvas);
+    ctx.globalAlpha=ai.alpha*0.5;
+    ctx.fillStyle='#4fc3f7';
+    ctx.fillRect(as.x-game.player.w/2,as.y-game.player.h/2,game.player.w,game.player.h);
+    ctx.globalAlpha=1;
+  }
+  // Player (dash stretch effect)
+  if(game.player._dashing){
+    ctx.save();
+    const s=cam.w2s(game.player.x,game.player.y,canvas);
+    ctx.translate(s.x,s.y);
+    ctx.rotate(game.player.facingAngle);
+    ctx.scale(1.4,0.8);
+    ctx.rotate(-game.player.facingAngle);
+    ctx.translate(-s.x,-s.y);
+    game.player.draw(ctx,cam,canvas);
+    ctx.restore();
+  }else{
+    game.player.draw(ctx,cam,canvas);
+  }
   // Weapon visuals
   for(const w of game.player.weapons){
     if(w.draw)w.draw(ctx,cam,canvas);
@@ -2116,6 +2180,30 @@ function loop(time){
   mmCtx.fillStyle='#4fc3f7';
   const px=game.player.x*mmScale, py=game.player.y*mmScale;
   mmCtx.fillRect(px-2,py-2,4,4);
+
+  // Dash cooldown indicator
+  if(game.player){
+    const dashCD=game.player._dashCD;
+    const dashReady=dashCD<=0;
+    const dW=30,dH=4;
+    const dX=W-dW-12,dY=H-16;
+    ctx.fillStyle='rgba(0,0,0,0.4)';
+    ctx.fillRect(dX-1,dY-1,dW+2,dH+2);
+    if(dashReady){
+      ctx.fillStyle='rgba(79,195,247,0.8)';
+      ctx.fillRect(dX,dY,dW,dH);
+    }else{
+      const pct=1-dashCD/CFG.DASH.cooldown;
+      ctx.fillStyle='rgba(79,195,247,0.3)';
+      ctx.fillRect(dX,dY,dW,dH);
+      ctx.fillStyle='rgba(79,195,247,0.7)';
+      ctx.fillRect(dX,dY,dW*pct,dH);
+    }
+    ctx.fillStyle=dashReady?'#4fc3f7':'#888';
+    ctx.font='9px monospace';ctx.textAlign='right';
+    ctx.fillText(dashReady?'DASH':'CD',dX-4,dY+3.5);
+    ctx.textAlign='center';
+  }
 }
 
 requestAnimationFrame(loop);

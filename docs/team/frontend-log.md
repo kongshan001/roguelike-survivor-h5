@@ -16,8 +16,33 @@
 | P1 | ~~音效系统（Web Audio API，8bit合成音效）~~ | **✅ 已完成 v0.9.0** |
 | P1 | ~~第4条进化路线（冰冻光环+闪电→暴风雪）~~ | **✅ 已完成 v0.10.0** |
 | P1 | ~~localStorage 存档（最高分+最佳时间+统计）~~ | **✅ 已完成 v0.11.0** |
-| P1 | 对象池优化（子弹/宝石复用，减少GC） | 待启动 |
+| P1 | ~~对象池优化（子弹/宝石复用，减少GC）~~ | **✅ 已完成 v0.12.0** |
+| P1 | ~~冲刺闪避系统（Space键冲刺+无敌帧+残影+冷却）~~ | **✅ 已完成 v0.12.0** |
 | P2 | PWA 离线支持（Service Worker缓存） | 待评估 |
+| P2 | PWA 离线支持（Service Worker缓存） | 待评估 |
+
+---
+
+## 2026-04-03 — v0.12.0 冲刺闪避系统
+
+### 成果
+- **CFG.DASH** 配置：`distance:80, duration:0.15, speedMult:3, cooldown:2.5, afterimages:3`
+- **Player 新增字段**：`_dashCD`, `_dashing`, `_dashTimer`, `_dashDir`, `_afterimages[]`
+- **`dash()` 方法**：冲刺朝面朝方向突进，冲刺期间无敌（invTimer=dashDuration）
+- **冲刺移动**：`_dashing` 时以 speed×speedMult 沿 `_dashDir` 移动，跳过正常输入处理
+- **残影系统**：`_afterimages[]` 记录位置+alpha，每帧衰减，最多 afterimages 个
+- **冲刺拉伸视觉**：`_dashing` 时 ctx.scale(1.4,0.8) 旋转拉伸效果
+- **受伤保护**：`takeDamage()` 检查 `_dashing` 返回 false
+- **Space 键绑定**：`keydown` 事件监听 `e.code==='Space'` 调用 `game.player.dash()`
+- **冲刺音效**：`SFX.play('dash')` — 1200→300Hz 正弦波滑音
+- **HUD 冷却指示器**：右下角 DASH 条，显示冷却进度/就绪状态
+
+### 技术细节
+- 冲刺方向使用 `facingAngle`（玩家最后面朝方向），无输入时保持上次方向
+- 冲刺期间无敌 = `invTimer=CFG.DASH.duration`，与受伤无敌帧共用计时器
+- 残影 alpha 以 dt×4 速率衰减（约0.25秒消失）
+- 拉伸效果使用 ctx.save/restore + rotate+scale 旋转矩阵
+- 冷却 2.5 秒 = 约每波怪一次闪避机会
 
 ---
 
