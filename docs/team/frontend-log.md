@@ -25,7 +25,32 @@
 | P1 | ~~HUD武器/技能栏（Canvas绘制底部武器+被动槽位）~~ | **✅ 已完成 v0.16.0** |
 | P1 | ~~击杀连击系统（3秒窗口经验加成+HUD+里程碑）~~ | **✅ 已完成 v0.17.0** |
 | P1 | ~~屏幕震动系统（击杀/受伤/Boss/连击里程碑震动反馈）~~ | **✅ 已完成 v0.18.0** |
-| P2 | PWA 离线支持（Service Worker缓存） | 待评估 |
+| P1 | ~~难度选择系统（休闲🌿/标准⚔️/噩梦💀 三档难度）~~ | **✅ 已完成 v0.19.0** |
+
+---
+
+## 2026-04-03 — v0.19.0 难度选择系统
+
+### 成果
+- **CFG.DIFFICULTY** 三档配置（easy/normal/hard）
+  - 每档 12 个参数：playerHpMul, playerSpeedMul, enemyHpMul, enemySpeedMul, enemyDmgMul, spawnIntervalMul, spawnCountMod, bossHpMul, bossSpeedMul, expMul, foodDropMul
+- **`pickDiff(diff)` 函数**：设置 `selectedDiff`，自动武器角色直接 beginGame，需选武器角色进 weapon-select
+- **流程变更**：角色选择 → 难度选择 → 武器选择(如有) → 游戏
+- **6 个应用点**：
+  - Player HP/speed：`beginGame()` 中乘以 `diff.playerHpMul/playerSpeedMul`
+  - Enemy HP/speed：`spawn logic` 中 `hpMul *= diff.enemyHpMul`, `spdMul *= diff.enemySpeedMul`
+  - Player受伤：`takeDamage()` 中 `d * diff.enemyDmgMul`
+  - 经验获取：`addExp()` 中 `amount * diff.expMul`
+  - 食物掉率：`food drop` 中 `dropRate * diff.foodDropMul`
+  - Boss属性：Boss 生成时使用 `diff.bossHpMul/bossSpeedMul`
+- **Bug修复**：补充缺失的 `pickDiff` 函数和 `selectedDiff` 变量声明
+
+### 技术细节
+- `selectedDiff` 默认 `'normal'`，在 `pickDiff` 中设置
+- 所有乘数用 `Math.ceil()` 向上取整（避免浮点HP）
+- 伤害减免：`Math.ceil(d*dMul) - armor`（先乘难度再减护甲）
+- `spawnCountMod` 用加法而非乘法（避免 `count=0 × mul=0` 的边界问题）
+- `spawnIntervalMul` 影响生成间隔（>1=更慢生成，<1=更快生成）
 
 ---
 
