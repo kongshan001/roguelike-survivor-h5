@@ -668,6 +668,20 @@ class FireStaff extends Weapon{
     ctx.arc(s.x,s.y,range*0.4,angle-halfArc*0.7,angle+halfArc*0.7);
     ctx.closePath();
     ctx.fill();
+    // Flickering flame tips along cone edge
+    const tipCount=this.level+2;
+    for(let i=0;i<tipCount;i++){
+      const t=0.4+0.6*i/tipCount;
+      const a=angle-halfArc+halfArc*2*i/tipCount;
+      const flicker=rand(0.7,1.0);
+      const r=range*t*flicker;
+      const tx=s.x+Math.cos(a)*r;
+      const ty=s.y+Math.sin(a)*r;
+      ctx.fillStyle=`rgba(255,${Math.floor(rand(100,200))},0,${0.4*flicker})`;
+      ctx.fillRect(tx-2,ty-2,4,4);
+      ctx.fillStyle=`rgba(255,235,59,${0.3*flicker})`;
+      ctx.fillRect(tx-1,ty-1,2,2);
+    }
   }
 }
 
@@ -1079,7 +1093,23 @@ function loop(time){
   // Gems
   for(const g of game.gems)g.draw(ctx,cam,canvas);
   // Enemies
-  for(const e of game.enemies)e.draw(ctx,cam,canvas);
+  for(const e of game.enemies){
+    e.draw(ctx,cam,canvas);
+    // Burn effect overlay
+    if(e._burn&&e._burn.t>0){
+      const bs=cam.w2s(e.x,e.y,canvas);
+      const flicker=Math.sin(Date.now()*0.015)*0.2+0.5;
+      ctx.fillStyle=`rgba(255,87,34,${flicker})`;
+      ctx.fillRect(bs.x-e.w/2,bs.y-e.h/2,e.w,e.h);
+      // Small flame particles
+      for(let p=0;p<2;p++){
+        const fx=bs.x+rand(-e.w/2,e.w/2);
+        const fy=bs.y-e.h/2-rand(2,8);
+        ctx.fillStyle=`rgba(255,${152+Math.floor(rand(0,80))},0,${flicker})`;
+        ctx.fillRect(fx,fy,2,3);
+      }
+    }
+  }
   // Player
   game.player.draw(ctx,cam,canvas);
   // Weapon visuals
