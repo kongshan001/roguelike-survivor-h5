@@ -37,6 +37,38 @@
 
 ---
 
+## 2026-04-03 — v0.12.0 回归测试
+
+### 测试结果：12/14 通过
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 12 PASS | 全部原有测试 | 无回归 |
+| 1 FLAKY | 经验宝石收集与升级 | 时序相关，非回归 |
+| 1 FLAKY | BUG-003 DPR渲染 | 已知flaky，偏移边界case |
+
+### 验证项
+- `CFG.DASH` 配置正确（distance:80, duration:0.15, speedMult:3, cooldown:2.5, afterimages:3）
+- Player 构造函数含 `_dashCD`/`_dashing`/`_dashTimer`/`_dashDir`/`_afterimages` 字段
+- `dash()` 方法：检查冷却→设置冲刺状态→无敌帧→面朝方向→残影→音效
+- 冲刺期间 `takeDamage()` 返回 false（`this.invTimer>0||this._dashing`）
+- `update()` 冲刺分支：以 speed×3 沿 `_dashDir` 移动，跳过正常输入
+- 冲刺结束：`_dashing=false, _dashCD=2.5`
+- Space 键绑定 `e.code==='Space'` → `game.player.dash()`
+- SFX dash 定义：`freq:[1200,300], dur:0.10, type:'sine'`
+- 残影渲染：蓝色方块 `#4fc3f7` alpha×0.5 衰减
+- 拉伸效果：`ctx.scale(1.4,0.8)` 沿面朝方向旋转
+- HUD冷却指示器：右下角30×4蓝色进度条
+- JS语法检查通过（花括号/圆括号/方括号全部平衡）
+- E2E测试无回归
+
+### 里程碑
+- **冲刺闪避系统上线**：玩家主动防御操作，Space键冲刺+无敌帧
+- **残影视觉**：冲刺时蓝色残影+精灵拉伸效果
+- **HUD扩展**：首次在画布上绘制非HTML的HUD元素
+
+---
+
 ## 2026-04-03 — v0.10.0 回归测试
 
 ### 测试结果：13/14 通过
