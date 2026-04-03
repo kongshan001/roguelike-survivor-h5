@@ -439,8 +439,13 @@ class Food{
       d=dist(this,player);
       if(d<12){
         // Heal
+        const wasFull=player.hp>=player.maxHp;
         player.hp=Math.min(player.hp+CFG.FOOD.healAmount,player.maxHp);
-        game.dmgTexts.push({x:player.x,y:player.y-20,text:'❤️+1',life:0.8});
+        if(wasFull){
+          game.dmgTexts.push({x:player.x,y:player.y-20,text:'💚',life:0.6});
+        }else{
+          game.dmgTexts.push({x:player.x,y:player.y-20,text:'❤️+1',life:0.8});
+        }
         return 'picked';
       }
     }else{
