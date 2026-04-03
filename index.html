@@ -115,11 +115,13 @@ const CFG = {
     bible:     { name:'圣经', icon:'📖', desc:'范围旋转' },
     firestaff: { name:'火焰法杖', icon:'🔥', desc:'锥形火焰' },
     thunderholywater: { name:'雷暴圣水', icon:'⚡💧', desc:'旋转+链式闪电', evolved:true },
-    fireknife: { name:'火焰飞刀', icon:'🔥🗡', desc:'燃烧穿透飞刀', evolved:true }
+    fireknife: { name:'火焰飞刀', icon:'🔥🗡', desc:'燃烧穿透飞刀', evolved:true },
+    holydomain: { name:'圣光领域', icon:'📖💧', desc:'超大范围+圣光脉冲', evolved:true }
   },
   EVOLUTIONS: [
     { a:'holywater', b:'lightning', result:'thunderholywater', name:'雷暴圣水', icon:'⚡💧', desc:'旋转+链式闪电' },
-    { a:'knife', b:'firestaff', result:'fireknife', name:'火焰飞刀', icon:'🔥🗡', desc:'燃烧穿透飞刀' }
+    { a:'knife', b:'firestaff', result:'fireknife', name:'火焰飞刀', icon:'🔥🗡', desc:'燃烧穿透飞刀' },
+    { a:'bible', b:'holywater', result:'holydomain', name:'圣光领域', icon:'📖💧', desc:'超大范围+圣光脉冲' }
   ],
   PASSIVES: {
     speedboots: { name:'疾风靴', icon:'👢', desc:'移动速度+15%', maxStack:3 },
@@ -889,6 +891,83 @@ class FireKnife extends Weapon{
   }
 }
 
+class HolyDomain extends Weapon{
+  constructor(owner){super('holydomain',owner);this.angle=0;this.pulseTimer=0;this.pulseEffects=[]}
+  get maxLevel(){return 1}
+  get radius(){return 130}
+  get orbCount(){return 4}
+  get orbDps(){return 2.5}
+  get pulseInterval(){return 4}
+  get pulseDmg(){return 12}
+  get pulseRadius(){return 200}
+  update(dt,enemies){
+    this.angle+=dt*4;
+    // Rotating holy orbs — continuous contact damage
+    for(let i=0;i<this.orbCount;i++){
+      const a=this.angle+Math.PI*2/this.orbCount*i;
+      const bx=this.owner.x+Math.cos(a)*this.radius;
+      const by=this.owner.y+Math.sin(a)*this.radius;
+      for(const e of enemies){
+        if(Math.abs(bx-e.x)<(14+e.w/2)&&Math.abs(by-e.y)<(14+e.h/2)){
+          e.hp-=this.orbDps*dt;
+        }
+      }
+    }
+    // Holy pulse every 4s — AOE damage
+    this.pulseTimer-=dt;
+    for(let i=this.pulseEffects.length-1;i>=0;i--){
+      this.pulseEffects[i].t-=dt;
+      if(this.pulseEffects[i].t<=0)this.pulseEffects.splice(i,1);
+    }
+    if(this.pulseTimer<=0){
+      this.pulseTimer=this.pulseInterval;
+      for(const e of enemies){
+        const d=dist(this.owner,e);
+        if(d<this.pulseRadius){
+          e.hp-=this.pulseDmg;
+        }
+      }
+      this.pulseEffects.push({x:this.owner.x,y:this.owner.y,t:0.5,r:this.pulseRadius});
+    }
+  }
+  draw(ctx,cam,canvas){
+    const s=cam.w2s(this.owner.x,this.owner.y,canvas);
+    // Evolution aura — pulsing white-gold ring
+    const pulse=Math.sin(Date.now()*0.004)*0.15+0.35;
+    ctx.strokeStyle=`rgba(255,215,0,${pulse})`;
+    ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(s.x,s.y,this.radius+10,0,Math.PI*2);ctx.stroke();
+    // Rotating holy orbs
+    for(let i=0;i<this.orbCount;i++){
+      const a=this.angle+Math.PI*2/this.orbCount*i;
+      const bx=this.owner.x+Math.cos(a)*this.radius;
+      const by=this.owner.y+Math.sin(a)*this.radius;
+      const os=cam.w2s(bx,by,canvas);
+      // Outer glow
+      ctx.fillStyle='rgba(255,255,255,0.3)';
+      ctx.fillRect(os.x-10,os.y-10,20,20);
+      // Core orb
+      ctx.fillStyle='#e0e0ff';
+      ctx.fillRect(os.x-6,os.y-6,12,12);
+      ctx.fillStyle='#bbdefb';
+      ctx.fillRect(os.x-4,os.y-4,8,8);
+      // Bright center
+      ctx.fillStyle='#fff';
+      ctx.fillRect(os.x-2,os.y-2,4,4);
+    }
+    // Holy pulse AOE visual
+    for(const p of this.pulseEffects){
+      const ps=cam.w2s(p.x,p.y,canvas);
+      const alpha=p.t*2;
+      ctx.strokeStyle=`rgba(255,255,255,${alpha})`;
+      ctx.lineWidth=3;
+      ctx.beginPath();ctx.arc(ps.x,ps.y,p.r*(1-p.t*0.5),0,Math.PI*2);ctx.stroke();
+      ctx.fillStyle=`rgba(255,255,200,${alpha*0.15})`;
+      ctx.beginPath();ctx.arc(ps.x,ps.y,p.r*(1-p.t*0.5),0,Math.PI*2);ctx.fill();
+    }
+  }
+}
+
 // ===== GAME =====
 const canvas=document.getElementById('c');
 const ctx=canvas.getContext('2d');
@@ -972,7 +1051,7 @@ function getInput(){
 }
 
 // Upgrade system
-const WEAPON_CLASSES={holywater:HolyWater,knife:Knife,lightning:Lightning,bible:Bible,firestaff:FireStaff,thunderholywater:ThunderHolyWater,fireknife:FireKnife};
+const WEAPON_CLASSES={holywater:HolyWater,knife:Knife,lightning:Lightning,bible:Bible,firestaff:FireStaff,thunderholywater:ThunderHolyWater,fireknife:FireKnife,holydomain:HolyDomain};
 
 function generateUpgrades(player){
   const pool=[];
@@ -1218,6 +1297,7 @@ function loop(time){
       else if(w instanceof FireStaff)w.update(dt,game.enemies);
       else if(w instanceof ThunderHolyWater)w.update(dt,game.enemies);
       else if(w instanceof FireKnife)w.update(dt,game.enemies,game.bullets);
+      else if(w instanceof HolyDomain)w.update(dt,game.enemies);
     }
 
     // Update bullets

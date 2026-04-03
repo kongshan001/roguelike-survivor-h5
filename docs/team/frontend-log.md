@@ -16,6 +16,20 @@
 
 ---
 
+## 2026-04-03 — v0.4.3 圣光领域进化武器
+
+### 成果
+- **HolyDomain 类**：圣经+圣水进化武器
+  - 130px半径范围，4个旋转圣光球体，2.5/s持续伤害
+  - 每4秒释放圣光脉冲（200px AOE，12伤害）
+  - 进化光环：金色脉动圆环
+  - 圣光脉冲视觉：白色圆形扩散+半透明填充
+- **CFG 注册**：`EVOLUTIONS` 第三条路线，`WEAPONS` holydomain 条目
+- **WEAPON_CLASSES 注册**：`holydomain:HolyDomain`
+- **游戏循环注册**：`else if(w instanceof HolyDomain)w.update(dt,game.enemies)`
+
+---
+
 ## 2026-04-03 — v0.4.2 火焰飞刀进化武器
 
 ### 成果
