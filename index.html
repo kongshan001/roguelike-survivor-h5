@@ -123,6 +123,15 @@ const CFG = {
     speedboots: { name:'疾风靴', icon:'👢', desc:'移动速度+15%', maxStack:3 },
     armor:      { name:'护甲',   icon:'🛡', desc:'受伤减少+1', maxStack:3 },
     magnet:     { name:'磁铁',   icon:'🧲', desc:'经验获取+30%', maxStack:3 }
+  },
+  FOOD: {
+    dropRate: 0.1, healAmount: 1, maxFood: 8, lifetime: 15, bossDropCount: 3,
+    types: {
+      zombie:   { icon:'🍖', color:'#8d6e63' },
+      bat:      { icon:'🍇', color:'#ab47bc' },
+      skeleton: { icon:'🧀', color:'#ffd54f' },
+      boss:     { icon:'🍖', color:'#8d6e63' }
+    }
   }
 };
 
@@ -408,6 +417,48 @@ class Gem{
     ctx.fillRect(s.x-3,s.y-3,6,6);
     ctx.fillStyle=`rgba(206,147,216,${glow})`;
     ctx.fillRect(s.x-1,s.y-1,2,2);
+  }
+}
+
+// ===== Food =====
+class Food{
+  constructor(x,y,enemyType){
+    const ft=CFG.FOOD.types[enemyType]||CFG.FOOD.types.zombie;
+    this.x=x;this.y=y;this.icon=ft.icon;this.color=ft.color;
+    this.lifetime=CFG.FOOD.lifetime;this.age=0;
+  }
+  update(dt,player,game){
+    this.age+=dt;
+    if(this.age>=this.lifetime)return false; // expired
+    // Drift toward player (same as gems)
+    const d=dist(this,player);
+    const dir=new V(player.x-this.x,player.y-this.y).norm();
+    if(d<player.pickupRange){
+      this.x+=dir.x*CFG.GEM_FLY_SPEED*dt;
+      this.y+=dir.y*CFG.GEM_FLY_SPEED*dt;
+      d=dist(this,player);
+      if(d<12){
+        // Heal
+        player.hp=Math.min(player.hp+CFG.FOOD.healAmount,player.maxHp);
+        game.dmgTexts.push({x:player.x,y:player.y-20,text:'❤️+1',life:0.8});
+        return 'picked';
+      }
+    }else{
+      const spd=30+40*(1-Math.min(d/800,1));
+      this.x+=dir.x*spd*dt;
+      this.y+=dir.y*spd*dt;
+    }
+    return true;
+  }
+  draw(ctx,cam,canvas){
+    const s=cam.w2s(this.x,this.y,canvas);
+    // Fade out in last 3 seconds
+    const alpha=this.lifetime-this.age<3?(this.lifetime-this.age)/3:1;
+    ctx.globalAlpha=alpha;
+    ctx.font='14px sans-serif';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(this.icon,s.x,s.y);
+    ctx.globalAlpha=1;
   }
 }
 
@@ -987,7 +1038,7 @@ function pickWeapon(name){
   const p=new Player();
   p.weapons.push(new WEAPON_CLASSES[name](p));
   game={
-    player:p,camera:new Camera(),enemies:[],bullets:[],gems:[],
+    player:p,camera:new Camera(),enemies:[],bullets:[],gems:[],foods:[],
     effects:[],dmgTexts:[],screenFlash:0,elapsed:0,paused:false,over:false,won:false,bossSpawned:false,
     spawnTimer:0
   };
@@ -1102,6 +1153,13 @@ function loop(time){
         for(let g=0;g<count;g++){
           game.gems.push(new Gem(e.x+rand(-10,10),e.y+rand(-10,10),val/count|0||1));
         }
+        // Drop food
+        if(game.foods.length<CFG.FOOD.maxFood){
+          const foodCount=e.isBoss?CFG.FOOD.bossDropCount:(Math.random()<CFG.FOOD.dropRate?1:0);
+          for(let f=0;f<foodCount;f++){
+            game.foods.push(new Food(e.x+rand(-12,12),e.y+rand(-12,12),e.type));
+          }
+        }
         // Boss kill = win if time >= 4:30
         if(e.isBoss&&game.elapsed>=270){endGame(true);return;}
         game.enemies.splice(i,1);
@@ -1174,6 +1232,14 @@ function loop(time){
         g.y+=dir.y*spd*dt;
       }
     }
+
+    // Foods
+    for(let i=game.foods.length-1;i>=0;i--){
+      const result=game.foods[i].update(dt,game.player,game);
+      if(result===false||result==='picked'){
+        game.foods.splice(i,1);
+      }
+    }
   }
 
   // ===== DRAW =====
@@ -1216,6 +1282,8 @@ function loop(time){
 
   // Gems
   for(const g of game.gems)g.draw(ctx,cam,canvas);
+  // Foods
+  for(const f of game.foods)f.draw(ctx,cam,canvas);
   // Enemies
   for(const e of game.enemies){
     e.draw(ctx,cam,canvas);
