@@ -24,7 +24,37 @@
 | P1 | ~~第7种敌人：精英骷髅（18×18, 12HP, 3方向扇形射击）~~ | **✅ 已完成 v0.15.0** |
 | P1 | ~~HUD武器/技能栏（Canvas绘制底部武器+被动槽位）~~ | **✅ 已完成 v0.16.0** |
 | P1 | ~~击杀连击系统（3秒窗口经验加成+HUD+里程碑）~~ | **✅ 已完成 v0.17.0** |
+| P1 | ~~屏幕震动系统（击杀/受伤/Boss/连击里程碑震动反馈）~~ | **✅ 已完成 v0.18.0** |
 | P2 | PWA 离线支持（Service Worker缓存） | 待评估 |
+
+---
+
+## 2026-04-03 — v0.18.0 屏幕震动系统
+
+### 成果
+- **CFG.SCREEN_SHAKE**：8种震动等级（kill/killBig/hurt/boss/combo5/10/20/50）
+- **screenShake(type)** 辅助函数：新震动强度>=旧震动时覆盖
+- **Camera.w2s()**：叠加随机偏移 `(random-0.5)*2*intensity*(timer/duration)`
+- **game.shake** 对象：`{intensity, duration, timer}`
+- **6个触发点**：
+  - 普通击杀 → `kill` (2px/0.08s)
+  - 精英/Boss击杀 → `killBig` (4px/0.12s)
+  - 玩家受伤 → `hurt` (6px/0.15s)
+  - Boss出场 → `boss` (8px/0.3s)
+  - 连击里程碑(5/10/20/50) → `combo5/10/20/50`
+- **修复**：shake timer 衰减从 screenFlash 条件块中移出，独立运行
+
+### 技术细节
+- 震动是纯视觉偏移，不影响游戏逻辑坐标
+- Camera.w2s 中通过 `timer/duration` 衰减因子让震动自然消失
+- 新震动仅在 `intensity >= 当前intensity` 时覆盖（避免小震动打断大震动）
+- shake timer 在游戏循环中每帧递减 dt
+
+### 决策记录
+- 普通击杀震动极轻(2px)，大量击杀时不会抖到看不清
+- Boss出场震动最强(8px/0.3s)，传达"大事发生了"
+- 连击里程碑配合连击系统，越高连击震动越强
+- 修复了 shake timer 嵌套在 screenFlash 条件中的 bug
 
 ---
 

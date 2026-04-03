@@ -205,6 +205,16 @@ const CFG = {
     goldThreshold: 5,
     milestones: [5, 10, 20, 50]
   },
+  SCREEN_SHAKE: {
+    kill:    {intensity:2, duration:0.08},
+    killBig: {intensity:4, duration:0.12},
+    hurt:   {intensity:6, duration:0.15},
+    boss:    {intensity:8, duration:0.3},
+    combo5:  {intensity:3, duration:0.1},
+    combo10: {intensity:5, duration:0.15},
+    combo20: {intensity:7, duration:0.2},
+    combo50: {intensity:10, duration:0.25}
+  },
   DASH: {
     distance: 80,
     duration: 0.15,
@@ -357,6 +367,15 @@ const Save={
   }
 };
 
+// ===== Screen Shake =====
+function screenShake(type){
+  const cfg=CFG.SCREEN_SHAKE[type];
+  if(!cfg||!game)return;
+  if(!game.shake||cfg.intensity>=game.shake.intensity){
+    game.shake={intensity:cfg.intensity,duration:cfg.duration,timer:cfg.duration};
+  }
+}
+
 // ===== Camera =====
 class Camera{
   constructor(){this.x=0;this.y=0;this.tx=0;this.ty=0}
@@ -367,7 +386,15 @@ class Camera{
   }
   w2s(wx,wy,canvas){
     const dpr=window.devicePixelRatio||1;
-    return{x:wx-this.x+canvas.width/(2*dpr), y:wy-this.y+canvas.height/(2*dpr)};
+    let sx=wx-this.x+canvas.width/(2*dpr);
+    let sy=wy-this.y+canvas.height/(2*dpr);
+    if(game&&game.shake&&game.shake.timer>0){
+      const f=game.shake.timer/game.shake.duration;
+      const i=game.shake.intensity*f;
+      sx+=(Math.random()-0.5)*2*i;
+      sy+=(Math.random()-0.5)*2*i;
+    }
+    return{x:sx,y:sy};
   }
   s2w(sx,sy,canvas){
     const dpr=window.devicePixelRatio||1;
@@ -457,6 +484,7 @@ class Player{
     const realDmg=Math.max(1,d-this.armor);
     this.hp-=realDmg;
     this.invTimer=CFG.INVINCIBLE_TIME;
+    screenShake('hurt');
     SFX.play('hit');
     return true;
   }
@@ -1846,7 +1874,7 @@ function beginGame(weaponName){
   game={
     player:p,camera:new Camera(),enemies:[],bullets:[],gems:[],foods:[],chests:[],
     effects:[],dmgTexts:[],screenFlash:0,elapsed:0,paused:false,over:false,won:false,bossSpawned:false,
-    spawnTimer:0,chestTimer:CFG.CHEST.spawnInterval
+    spawnTimer:0,chestTimer:CFG.CHEST.spawnInterval,shake:null
   };
   showScene(null);
   document.getElementById('hud').style.display='flex';
@@ -1913,6 +1941,7 @@ function loop(time){
     if(game.elapsed>=270&&!game.bossSpawned){
       game.bossSpawned=true;
       game.screenFlash=0.5;
+      screenShake('boss');
       SFX.play('boss');
       // Show boss warning for 3 seconds
       const bw=document.getElementById('boss-warning');
@@ -2024,10 +2053,16 @@ function loop(time){
       const e=game.enemies[i];
       if(e.hp<=0){
         game.player.kills++;
+        screenShake(e.type==='elite_skeleton'||e.isBoss?'killBig':'kill');
         // Combo system
         game.player._combo++;
         game.player._comboTimer=CFG.COMBO.timeout;
         if(game.player._combo>game.player._bestCombo)game.player._bestCombo=game.player._combo;
+        if(CFG.COMBO.milestones.includes(game.player._combo)){
+          const m=game.player._combo;
+          const shakeType=m>=50?'combo50':m>=20?'combo20':m>=10?'combo10':'combo5';
+          screenShake(shakeType);
+        }
         const comboGold=game.player._combo>=CFG.COMBO.goldThreshold?1:0;
         game.player.gold+=10+comboGold;
         SFX.play('kill');
@@ -2300,6 +2335,8 @@ function loop(time){
     ctx.fillStyle=`rgba(255,0,0,${game.screenFlash*0.4})`;
     ctx.fillRect(0,0,W,H);
   }
+  // Screen shake timer
+  if(game.shake&&game.shake.timer>0)game.shake.timer-=dt;
 
   // ===== HUD =====
   const remaining=Math.max(0,CFG.GAME_TIME-game.elapsed);
