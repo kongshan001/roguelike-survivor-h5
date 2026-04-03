@@ -2,6 +2,22 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [0.16.0] - 2026-04-03
+
+### Added
+- **HUD武器/技能栏**：画面底部居中显示当前武器+被动道具
+  - 武器区（最多6格）：emoji图标 + Lv.X等级 / ★进化标记
+  - 被动区（最多6格）：emoji图标 + ×N叠层数，绿色色调
+  - 满级可进化武器：金色脉动边框（sin波驱动）
+  - 进化武器：金色背景+★标记
+  - 空槽位：半透明虚线框
+  - 武器区和被动区用白色竖线分隔
+- **CFG.HUD_WEAPONS** 配置：slotSize:32, gap:4, bottomOffset:24
+- Canvas绘制（非HTML），与游戏画面一体渲染
+
+### QA
+- E2E 测试 13/14 通过（1个时序相关 flaky，非回归）
+
 ## [0.15.0] - 2026-04-03
 
 ### Added
