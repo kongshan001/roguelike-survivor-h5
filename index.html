@@ -175,6 +175,88 @@ function randInt(a,b){return Math.floor(rand(a,b+1))}
 function clamp(v,lo,hi){return v<lo?lo:v>hi?hi:v}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 
+// ===== SFX (8-bit Sound) =====
+const SFX={
+  ctx:null,
+  vol:0.3,
+  enabled:true,
+  init(){
+    if(this.ctx)return;
+    this.ctx=new (window.AudioContext||window.webkitAudioContext)();
+  },
+  play(id){
+    if(!this.enabled||!this.ctx)return;
+    const defs={
+      hit:      {freq:[440,110],dur:0.15,type:'square'},
+      kill:     {freq:[200,600],dur:0.10,type:'square'},
+      knife:    {freq:800,       dur:0.05,type:'sawtooth'},
+      lightning:{noise:true,     dur:0.12},
+      levelup:  {freq:[523,659,784],dur:0.1,type:'square',seq:true},
+      pickup:   {freq:880,       dur:0.08,type:'sine'},
+      chest:    {freq:[440,660,880],dur:0.08,type:'triangle',seq:true},
+      boss:     {freq:110,       dur:0.15,type:'sawtooth',repeat:3},
+      freeze:   {freq:[1200,400],dur:0.15,type:'sine'},
+      gameover: {freq:[440,110], dur:0.8, type:'sawtooth'},
+      victory:  {freq:[523,659,784,1047],dur:0.12,type:'square',seq:true}
+    };
+    const d=defs[id];if(!d)return;
+    const now=this.ctx.currentTime;
+    if(d.noise){
+      // White noise burst
+      const bufSize=this.ctx.sampleRate*d.dur;
+      const buf=this.ctx.createBuffer(1,bufSize,this.ctx.sampleRate);
+      const data=buf.getChannelData(0);
+      for(let i=0;i<bufSize;i++)data[i]=Math.random()*2-1;
+      const src=this.ctx.createBufferSource();
+      src.buffer=buf;
+      const g=this.ctx.createGain();
+      g.gain.setValueAtTime(this.vol*0.5,now);
+      g.gain.exponentialRampToValueAtTime(0.01,now+d.dur);
+      src.connect(g);g.connect(this.ctx.destination);
+      src.start(now);src.stop(now+d.dur);
+    }else if(d.seq){
+      // Sequence of tones
+      for(let i=0;i<d.freq.length;i++){
+        const osc=this.ctx.createOscillator();
+        const g=this.ctx.createGain();
+        osc.type=d.type;
+        osc.frequency.setValueAtTime(d.freq[i],now+i*d.dur);
+        g.gain.setValueAtTime(this.vol,now+i*d.dur);
+        g.gain.exponentialRampToValueAtTime(0.01,now+i*d.dur+d.dur*0.9);
+        osc.connect(g);g.connect(this.ctx.destination);
+        osc.start(now+i*d.dur);osc.stop(now+i*d.dur+d.dur);
+      }
+    }else if(d.repeat){
+      // Repeated tone
+      for(let i=0;i<d.repeat;i++){
+        const osc=this.ctx.createOscillator();
+        const g=this.ctx.createGain();
+        osc.type=d.type;
+        osc.frequency.setValueAtTime(d.freq,now+i*d.dur*1.5);
+        g.gain.setValueAtTime(this.vol,now+i*d.dur*1.5);
+        g.gain.exponentialRampToValueAtTime(0.01,now+i*d.dur*1.5+d.dur);
+        osc.connect(g);g.connect(this.ctx.destination);
+        osc.start(now+i*d.dur*1.5);osc.stop(now+i*d.dur*1.5+d.dur);
+      }
+    }else{
+      // Single frequency or frequency sweep
+      const osc=this.ctx.createOscillator();
+      const g=this.ctx.createGain();
+      osc.type=d.type;
+      if(Array.isArray(d.freq)){
+        osc.frequency.setValueAtTime(d.freq[0],now);
+        osc.frequency.exponentialRampToValueAtTime(d.freq[1],now+d.dur);
+      }else{
+        osc.frequency.setValueAtTime(d.freq,now);
+      }
+      g.gain.setValueAtTime(this.vol,now);
+      g.gain.exponentialRampToValueAtTime(0.01,now+d.dur);
+      osc.connect(g);g.connect(this.ctx.destination);
+      osc.start(now);osc.stop(now+d.dur);
+    }
+  }
+};
+
 // ===== Vec2 =====
 class V{
   constructor(x=0,y=0){this.x=x;this.y=y}
@@ -235,6 +317,7 @@ class Player{
     const realDmg=Math.max(1,d-this.armor);
     this.hp-=realDmg;
     this.invTimer=CFG.INVINCIBLE_TIME;
+    SFX.play('hit');
     return true;
   }
   addExp(amount){
@@ -568,6 +651,7 @@ class Food{
         }else{
           game.dmgTexts.push({x:player.x,y:player.y-20,text:'❤️+1',life:0.8});
         }
+        SFX.play('pickup');
         return 'picked';
       }
     }else{
@@ -680,6 +764,7 @@ class Knife extends Weapon{
         if(d<nd){nd=d;nearest=e;}
       }
       if(nearest){
+        SFX.play('knife');
         for(let i=0;i<this.count;i++){
           const dir=new V(nearest.x-this.owner.x,nearest.y-this.owner.y).norm();
           const spread=i>0?(i%2===1?0.15:-0.15):0;
@@ -716,6 +801,7 @@ class Lightning extends Weapon{
         const idx=randInt(0,screenEnemies.length-1);
         const target=screenEnemies[idx];
         target.hurt(this.dmg);
+        SFX.play('lightning');
         this.effects.push({x0:this.owner.x,y0:this.owner.y,x1:target.x,y1:target.y,t:0.2});
         // Chain
         let prev=target;
@@ -919,7 +1005,7 @@ class FrostAura extends Weapon{
         e._slowTimer=0.5; // refresh slow duration
         // Freeze chance (Lv3 only)
         if(this.freezeChance>0&&Math.random()<this.freezeChance*dt){
-          e._frozen=this.freezeDur;
+          e._frozen=this.freezeDur;            SFX.play('freeze');
         }
       }
     }
@@ -1368,6 +1454,7 @@ function showScene(id){
 }
 
 function startGame(){
+  SFX.init();
   showScene('char-select');
 }
 
@@ -1411,6 +1498,7 @@ function restartGame(){
 
 function endGame(won){
   game.over=true;game.won=won;
+  SFX.play(won?'victory':'gameover');
   document.getElementById('result-title').textContent=won?'🏆 胜利! 🏆':'💀 失败';
   document.getElementById('result-title').style.color=won?'#ffd54f':'#ef5350';
   const m=Math.floor(game.elapsed/60),s=Math.floor(game.elapsed%60);
@@ -1445,6 +1533,7 @@ function loop(time){
     if(game.elapsed>=270&&!game.bossSpawned){
       game.bossSpawned=true;
       game.screenFlash=0.5;
+      SFX.play('boss');
       // Show boss warning for 3 seconds
       const bw=document.getElementById('boss-warning');
       bw.style.display='block';
@@ -1503,6 +1592,7 @@ function loop(time){
           if(game.player.gold>=CFG.CHEST.cost){
             game.player.gold-=CFG.CHEST.cost;
             ch.opened=true;
+            SFX.play('chest');
             // Random reward
             const reward=CFG.CHEST.rewards[randInt(0,CFG.CHEST.rewards.length-1)];
             if(reward.type==='heal'){
@@ -1514,6 +1604,7 @@ function loop(time){
               game.dmgTexts.push({x:ch.x,y:ch.y-10,text:`${reward.icon} ${reward.desc}`,life:1.2});
             }else if(reward.type==='exp'){
               if(game.player.addExp(reward.value)){
+                SFX.play('levelup');
                 const choices=generateUpgrades(game.player);
                 if(choices.length>0)showUpgrade(choices);
               }
@@ -1554,6 +1645,7 @@ function loop(time){
       if(e.hp<=0){
         game.player.kills++;
         game.player.gold+=10;
+        SFX.play('kill');
         game.dmgTexts.push({x:e.x,y:e.y-10,text:'💀',life:0.8});
         // Drop gems
         const val=e.isBoss?50:(e.type==='skeleton'?3:e.type==='ghost'?2:e.type==='bat'?1:2);
@@ -1637,9 +1729,11 @@ function loop(time){
         d=dist(g,game.player);
         if(d<12){
           if(game.player.addExp(g.value)){
+            SFX.play('levelup');
             const choices=generateUpgrades(game.player);
             if(choices.length>0)showUpgrade(choices);
           }
+          SFX.play('pickup');
           game.gems.splice(i,1);
         }
       }else{

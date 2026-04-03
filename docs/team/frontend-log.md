@@ -13,10 +13,50 @@
 | P1 | ~~宝箱系统（金币开箱，解决金币用途问题）~~ | **✅ 已完成 v0.6.0** |
 | P1 | ~~多角色系统（3角色选择+不同属性/精灵）~~ | **✅ 已完成 v0.7.0** |
 | P1 | ~~第6种武器：冰冻光环（范围减速+冰冻控制）~~ | **✅ 已完成 v0.8.0** |
+| P1 | ~~音效系统（Web Audio API，8bit合成音效）~~ | **✅ 已完成 v0.9.0** |
 | P1 | 对象池优化（子弹/宝石复用，减少GC） | 待启动 |
-| P1 | 音效系统（Web Audio API，8bit风格） | 规划中 |
 | P2 | localStorage 存档（最高分记录） | 待评估 |
 | P2 | PWA 离线支持（Service Worker缓存） | 待评估 |
+
+---
+
+## 2026-04-03 — v0.9.0 音效系统
+
+### 成果
+- **SFX 全局对象**：Web Audio API 振荡器合成 8-bit 风格音效，零外部文件
+- **`SFX.init()`**：首次用户交互时创建 `AudioContext`（满足 Chrome 自动播放策略）
+- **`SFX.play(id)`**：根据音效 ID 查表创建 OscillatorNode + GainNode，播放后自动断开
+- **11种音效**：
+  - `hit`: 440→110Hz 下行方波 0.15s（受击）
+  - `kill`: 200→600Hz 上行方波 0.1s（击杀）
+  - `knife`: 800Hz 锯齿波 0.05s（飞刀投掷）
+  - `lightning`: 白噪声爆发 0.12s（闪电）
+  - `levelup`: C5-E5-G5 三音阶序列（升级）
+  - `pickup`: 880Hz 正弦波 0.08s（拾取）
+  - `chest`: 440-660-880Hz 三角波琶音（开箱）
+  - `boss`: 110Hz 锯齿波×3连击（Boss出场）
+  - `freeze`: 1200→400Hz 正弦波（冰冻触发）
+  - `gameover`: 440→110Hz 锯齿波 0.8s（失败）
+  - `victory`: C5-E5-G5-C6 四音阶序列（通关）
+- **12个触发点**：
+  1. `player.takeDamage()` → hit
+  2. 敌人 `hp<=0` → kill
+  3. `Knife.update()` 发射 → knife
+  4. `Lightning.update()` 电击 → lightning
+  5. 宝石升级 → levelup (×2)
+  6. 宝石拾取 → pickup
+  7. 食物拾取 → pickup
+  8. 宝箱开箱 → chest
+  9. Boss生成 → boss
+  10. 冰冻触发 → freeze
+  11. `endGame(won)` → victory/gameover
+- **白噪声实现**：AudioBuffer 填充随机采样值
+- **音量控制**：`masterVolume = 0.3`
+
+### 技术细节
+- 音效类型分4种渲染路径：噪声(noise)、序列(seq)、重复(repeat)、单音/滑音(default)
+- `exponentialRampToValueAtTime(0.01, ...)` 避免 gain=0 的 exponentialRamp 错误
+- 所有 OscillatorNode 播放后自动 stop+断开，不占内存
 
 ---
 
