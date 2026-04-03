@@ -82,6 +82,8 @@ canvas{display:block;position:absolute;top:0;left:0}
     <div class="upg-cards" id="upg-cards"></div>
   </div>
 
+  <div id="boss-warning" style="position:absolute;top:0;left:0;right:0;display:none;padding:8px;text-align:center;font:bold 18px monospace;color:#f44336;background:linear-gradient(90deg,rgba(244,67,54,0.4),rgba(244,67,54,0.1),rgba(244,67,54,0.4));z-index:15;letter-spacing:2px;text-shadow:0 0 8px #f44336">⚠ BOSS来了 ⚠</div>
+
   <div id="result-screen">
     <div class="result-title" id="result-title"></div>
     <div class="stats" id="result-stats"></div>
@@ -233,7 +235,7 @@ class Enemy{
     this.hitCD=0; // contact damage cooldown
     this.phase=1; // boss phase
     this.chargeTimer=0;this.charging=false;this.chargeDir=null;
-    this.sprayTimer=0;
+    this.sprayTimer=0;this.spiralAngle=0;
   }
   update(dt,player,bullets){
     if(this.hitCD>0)this.hitCD-=dt;
@@ -257,12 +259,17 @@ class Enemy{
     }
   }
   updateBoss(dt,player,bullets){
+    // Phase 2 trigger
     if(this.hp<=this.maxHp/2&&this.phase===1){
       this.phase=2;this.sprayTimer=0;
     }
+    // Phase 3 trigger (HP<25%)
+    if(this.hp<=this.maxHp*0.25&&this.phase<3){
+      this.phase=3;this.spiralAngle=0;
+    }
     if(this.phase===1){
       this.moveToward(player,dt);
-    }else{
+    }else if(this.phase===2){
       this.chargeTimer-=dt;
       if(this.chargeTimer<=0&&!this.charging){
         this.charging=true;this.chargeTimer=1.5;
@@ -285,6 +292,19 @@ class Enemy{
           const a=Math.PI*2/8*i;
           bullets.push({x:this.x,y:this.y,vx:Math.cos(a)*100,vy:Math.sin(a)*100,w:8,h:8,dmg:1,life:2,color:'#ff5252'});
         }
+      }
+    }else if(this.phase===3){
+      // Phase 3: fast chase + spiral barrage
+      this.moveToward(player,dt*1.5);
+      this.sprayTimer-=dt;
+      if(this.sprayTimer<=0){
+        this.sprayTimer=2;
+        // Spiral: 16 bullets in expanding spiral
+        for(let i=0;i<16;i++){
+          const a=this.spiralAngle+Math.PI*2/16*i;
+          bullets.push({x:this.x,y:this.y,vx:Math.cos(a)*80,vy:Math.sin(a)*80,w:8,h:8,dmg:1,life:3,color:'#ff1744'});
+        }
+        this.spiralAngle+=dt*1.5; // rotate spiral each frame
       }
     }
   }
@@ -339,6 +359,9 @@ class Enemy{
       // HP bar
       ctx.fillStyle='#333';ctx.fillRect(x,y-12,this.w,6);
       ctx.fillStyle='#f44336';ctx.fillRect(x,y-12,this.w*(this.hp/this.maxHp),6);
+      // HP percentage text
+      ctx.fillStyle='#fff';ctx.font='bold 8px monospace';ctx.textAlign='center';
+      ctx.fillText(`HP:${Math.ceil(this.hp/this.maxHp*100)}%`,x+this.w/2,y-14);
     }
     if(!this.isBoss && this.hp<this.maxHp){
       const bw=this.w;
@@ -780,6 +803,11 @@ function loop(time){
     // Boss spawn
     if(game.elapsed>=270&&!game.bossSpawned){
       game.bossSpawned=true;
+      game.screenFlash=0.5;
+      // Show boss warning for 3 seconds
+      const bw=document.getElementById('boss-warning');
+      bw.style.display='block';
+      setTimeout(()=>{bw.style.display='none';},3000);
       const angle=Math.random()*Math.PI*2;
       game.enemies.push(new Enemy('boss',
         game.player.x+Math.cos(angle)*300,
