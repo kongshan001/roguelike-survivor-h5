@@ -113,8 +113,12 @@ const CFG = {
     knife:     { name:'飞刀', icon:'🗡', desc:'自动投掷' },
     lightning: { name:'闪电', icon:'⚡', desc:'随机电击' },
     bible:     { name:'圣经', icon:'📖', desc:'范围旋转' },
-    firestaff: { name:'火焰法杖', icon:'🔥', desc:'锥形火焰' }
+    firestaff: { name:'火焰法杖', icon:'🔥', desc:'锥形火焰' },
+    thunderholywater: { name:'雷暴圣水', icon:'⚡💧', desc:'旋转+链式闪电', evolved:true }
   },
+  EVOLUTIONS: [
+    { a:'holywater', b:'lightning', result:'thunderholywater', name:'雷暴圣水', icon:'⚡💧', desc:'旋转+链式闪电' }
+  ],
   PASSIVES: {
     speedboots: { name:'疾风靴', icon:'👢', desc:'移动速度+15%', maxStack:3 },
     armor:      { name:'护甲',   icon:'🛡', desc:'受伤减少+1', maxStack:3 },
@@ -685,6 +689,106 @@ class FireStaff extends Weapon{
   }
 }
 
+class ThunderHolyWater extends Weapon{
+  constructor(owner){super('thunderholywater',owner);this.angle=0;this.lightningTimer=0;this.effects=[]}
+  get maxLevel(){return 1}
+  get count(){return 3}
+  get radius(){return 60}
+  get dmg(){return 1.5}
+  get lightningDmg(){return 6}
+  get chains(){return 3}
+  get lightningCD(){return 2}
+  update(dt,enemies){
+    this.angle+=dt*3;
+    // Holy water continuous damage
+    for(let i=0;i<this.count;i++){
+      const a=this.angle+Math.PI*2/this.count*i;
+      const bx=this.owner.x+Math.cos(a)*this.radius;
+      const by=this.owner.y+Math.sin(a)*this.radius;
+      for(const e of enemies){
+        if(Math.abs(bx-e.x)<(12+e.w/2)&&Math.abs(by-e.y)<(12+e.h/2)){
+          e.hp-=this.dmg*dt*15;
+        }
+      }
+    }
+    // Chain lightning every 2s
+    this.lightningTimer-=dt;
+    for(let i=this.effects.length-1;i>=0;i--){
+      this.effects[i].t-=dt;
+      if(this.effects[i].t<=0)this.effects.splice(i,1);
+    }
+    if(this.lightningTimer<=0){
+      this.lightningTimer=this.lightningCD;
+      const nearEnemies=enemies.filter(e=>dist(this.owner,e)<250);
+      for(let i=0;i<this.count&&nearEnemies.length>0;i++){
+        const a=this.angle+Math.PI*2/this.count*i;
+        const bx=this.owner.x+Math.cos(a)*this.radius;
+        const by=this.owner.y+Math.sin(a)*this.radius;
+        // Find nearest enemy to this orb
+        let nearest=null,nd=Infinity;
+        for(const e of nearEnemies){
+          const d=Math.hypot(bx-e.x,by-e.y);
+          if(d<nd){nd=d;nearest=e;}
+        }
+        if(nearest){
+          nearest.hp-=this.lightningDmg;
+          this.effects.push({x0:bx,y0:by,x1:nearest.x,y1:nearest.y,t:0.2});
+          // Chain
+          const hit=new Set([nearest]);
+          let prev=nearest;
+          for(let c=0;c<this.chains;c++){
+            let next=null;nd=Infinity;
+            for(const e of enemies){
+              if(hit.has(e))continue;
+              const d=dist(prev,e);
+              if(d<150&&d<nd){nd=d;next=e;}
+            }
+            if(next){
+              next.hp-=this.lightningDmg*0.5;
+              hit.add(next);
+              this.effects.push({x0:prev.x,y0:prev.y,x1:next.x,y1:next.y,t:0.2});
+              prev=next;
+            }
+          }
+        }
+      }
+    }
+  }
+  draw(ctx,cam,canvas){
+    const r=this.radius;
+    // Rotating orbs (electric blue + lightning glow)
+    for(let i=0;i<this.count;i++){
+      const a=this.angle+Math.PI*2/this.count*i;
+      const bx=this.owner.x+Math.cos(a)*r;
+      const by=this.owner.y+Math.sin(a)*r;
+      const s=cam.w2s(bx,by,canvas);
+      // Outer glow
+      ctx.fillStyle='rgba(255,235,59,0.3)';
+      ctx.fillRect(s.x-8,s.y-8,16,16);
+      // Water orb
+      ctx.fillStyle='#29b6f6';ctx.fillRect(s.x-5,s.y-5,10,10);
+      ctx.fillStyle='#0288d1';ctx.fillRect(s.x-3,s.y-3,6,6);
+      // Electric sparkle
+      ctx.fillStyle='#ffeb3b';ctx.fillRect(s.x-1,s.y-1,2,2);
+    }
+    // Lightning bolt effects
+    for(const e of this.effects){
+      const s0=cam.w2s(e.x0,e.y0,canvas);
+      const s1=cam.w2s(e.x1,e.y1,canvas);
+      ctx.strokeStyle=`rgba(255,235,59,${e.t*5})`;
+      ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(s0.x,s0.y);
+      for(let i=1;i<=4;i++){
+        const t=i/4;
+        ctx.lineTo(s0.x+(s1.x-s0.x)*t+(Math.random()-0.5)*14,
+                   s0.y+(s1.y-s0.y)*t+(Math.random()-0.5)*14);
+      }
+      ctx.lineTo(s1.x,s1.y);
+      ctx.stroke();
+    }
+  }
+}
+
 // ===== GAME =====
 const canvas=document.getElementById('c');
 const ctx=canvas.getContext('2d');
@@ -768,7 +872,7 @@ function getInput(){
 }
 
 // Upgrade system
-const WEAPON_CLASSES={holywater:HolyWater,knife:Knife,lightning:Lightning,bible:Bible,firestaff:FireStaff};
+const WEAPON_CLASSES={holywater:HolyWater,knife:Knife,lightning:Lightning,bible:Bible,firestaff:FireStaff,thunderholywater:ThunderHolyWater};
 
 function generateUpgrades(player){
   const pool=[];
@@ -803,6 +907,19 @@ function generateUpgrades(player){
           if(key==='speedboots')player.speed*=1.15;
           if(key==='armor')player.armor+=1;
           if(key==='magnet')player.expBonus=(player.expBonus||0)+0.3;
+        }});
+    }
+  }
+  // Evolutions
+  for(const evo of CFG.EVOLUTIONS){
+    const wA=player.weapons.find(w=>w.name===evo.a&&w.level>=w.maxLevel);
+    const wB=player.weapons.find(w=>w.name===evo.b&&w.level>=w.maxLevel);
+    if(wA&&wB){
+      pool.push({type:'evolution',icon:evo.icon,name:evo.name,desc:evo.desc,
+        badge:'进化',badgeColor:'#ff9100',
+        apply:()=>{
+          player.weapons=player.weapons.filter(w=>w!==wA&&w!==wB);
+          player.weapons.push(new ThunderHolyWater(player));
         }});
     }
   }
@@ -992,6 +1109,7 @@ function loop(time){
       else if(w instanceof Lightning)w.update(dt,game.enemies);
       else if(w instanceof Bible)w.update(dt,game.enemies);
       else if(w instanceof FireStaff)w.update(dt,game.enemies);
+      else if(w instanceof ThunderHolyWater)w.update(dt,game.enemies);
     }
 
     // Update bullets
