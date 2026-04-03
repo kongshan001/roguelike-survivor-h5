@@ -28,7 +28,112 @@
 | P1 | ~~第7种敌人：精英骷髅（高HP远程型 — 中后期威胁）~~ | **✅ 已完成 v0.15.0** |
 | P1 | ~~HUD武器/技能栏（显示当前武器+等级+被动道具）~~ | **✅ 已完成 v0.16.0** |
 | P1 | ~~击杀连击系统（连续击杀经验加成+HUD显示）~~ | **✅ 已完成 v0.17.0** |
-| P1 | 屏幕震动系统（击杀/Boss/受伤时屏幕抖动反馈） | **进行中** |
+| P1 | ~~屏幕震动系统（击杀/Boss/受伤时屏幕抖动反馈）~~ | **✅ 已完成 v0.18.0** |
+| P1 | 难度选择系统（简单/普通/困难三档，影响敌人属性+生成速率） | **进行中** |
+
+---
+
+## 2026-04-03 — 策划迭代22：难度选择系统
+
+### 背景
+当前所有玩家使用相同难度游玩5分钟。新手容易被大量敌人淹没（平均存活2-3分钟），而熟练玩家觉得后3分钟太简单。几乎所有 survivor-like 游戏都提供难度选项。三档难度让不同水平玩家都能享受游戏，增加重玩价值。
+
+### 成果
+
+**三档难度设计**：
+
+| 难度 | 名称 | 图标 | 目标玩家 |
+|------|------|------|---------|
+| Easy | 休闲 | 🌿 | 新手/休闲玩家 |
+| Normal | 标准 | ⚔️ | 普通玩家（默认） |
+| Hard | 噩梦 | 💀 | 硬核玩家 |
+
+**难度参数对照表**：
+
+| 参数 | 🌿 休闲 | ⚔️ 标准(当前) | 💀 噩梦 |
+|------|---------|-------------|---------|
+| 玩家HP | ×1.25 (向上取整) | ×1.0 | ×0.75 (向上取整) |
+| 玩家移速 | ×1.0 | ×1.0 | ×0.9 |
+| 敌人HP | ×0.7 | ×1.0 | ×1.5 |
+| 敌人速度 | ×0.8 | ×1.0 | ×1.3 |
+| 敌人伤害 | ×0.75 | ×1.0 | ×1.5 |
+| 生成间隔 | ×1.4 (更慢) | ×1.0 | ×0.7 (更快) |
+| 生成数量 | -1 (最少1) | ×1.0 | +1 |
+| Boss HP | ×0.6 | ×1.0 | ×2.0 |
+| Boss速度 | ×0.8 | ×1.0 | ×1.3 |
+| 经验获取 | ×1.3 | ×1.0 | ×0.8 |
+| 食物掉率 | ×1.5 | ×1.0 | ×0.6 |
+
+**CONFIG 数值**：
+```javascript
+DIFFICULTY: {
+  easy: {
+    name:'休闲', icon:'🌿', desc:'敌人更弱，适合新手',
+    playerHpMul:1.25, playerSpeedMul:1.0,
+    enemyHpMul:0.7, enemySpeedMul:0.8, enemyDmgMul:0.75,
+    spawnIntervalMul:1.4, spawnCountMod:-1,
+    bossHpMul:0.6, bossSpeedMul:0.8,
+    expMul:1.3, foodDropMul:1.5
+  },
+  normal: {
+    name:'标准', icon:'⚔️', desc:'标准难度，平衡体验',
+    playerHpMul:1.0, playerSpeedMul:1.0,
+    enemyHpMul:1.0, enemySpeedMul:1.0, enemyDmgMul:1.0,
+    spawnIntervalMul:1.0, spawnCountMod:0,
+    bossHpMul:1.0, bossSpeedMul:1.0,
+    expMul:1.0, foodDropMul:1.0
+  },
+  hard: {
+    name:'噩梦', icon:'💀', desc:'极限挑战，真正的考验',
+    playerHpMul:0.75, playerSpeedMul:0.9,
+    enemyHpMul:1.5, enemySpeedMul:1.3, enemyDmgMul:1.5,
+    spawnIntervalMul:0.7, spawnCountMod:1,
+    bossHpMul:2.0, bossSpeedMul:1.3,
+    expMul:0.8, foodDropMul:0.6
+  }
+}
+```
+
+**UI 流程变更**：
+1. 角色选择 → **难度选择**（新增）→ 武器选择(如有) → 游戏
+2. 难度选择界面：3张卡片（复用 `.ws-card` 样式）
+3. 默认选中"标准"
+4. 难度信息持久化到当前局（`game.difficulty`）
+
+**HTML 结构**：
+```html
+<div id="diff-select">
+  <h2>选择难度</h2>
+  <div class="ws-cards">
+    <div class="ws-card" onclick="pickDiff('easy')">...</div>
+    <div class="ws-card" onclick="pickDiff('normal')">...</div>
+    <div class="ws-card" onclick="pickDiff('hard')">...</div>
+  </div>
+</div>
+```
+
+**应用点**：
+- `beginGame()` 中读取难度 → 应用 playerHp/playerSpeed
+- `Enemy` 构造函数中 `hp *= diff.enemyHpMul`
+- `getSpawnRate()` 中 `interval *= diff.spawnIntervalMul`, `count += diff.spawnCountMod`
+- `takeDamage()` 中 `dmg = Math.max(1, Math.ceil(dmg * diff.enemyDmgMul))`
+- `addExp()` 中 `amount = Math.ceil(amount * diff.expMul)`
+- Boss 生成时 `hp *= diff.bossHpMul`
+- 食物掉率 `dropRate *= diff.foodDropMul`
+
+**存档变更**：
+- Save 记录中新增 `difficultyStats: {easy:{...}, normal:{...}, hard:{...}}`
+- 每难度独立记录最佳成绩
+
+### 决策记录
+- 三档难度覆盖"轻松/标准/硬核"三角，几乎所有游戏都用三档
+- 休闲模式不削弱玩家（HP×1.25是增加而非削弱敌人），保持"我在变强"的感觉
+- 噩梦模式同时削弱玩家(HP×0.75)和强化敌人，是真正的挑战
+- 经验调整(×1.3/×0.8)让休闲模式升级更快(爽感)，噩梦模式升级更慢(压力)
+- 生成间隔乘法比固定值更灵活，后期0.5s×0.7=0.35s比0.5s×1.4=0.7s差异明显
+- spawnCountMod 用±1而非乘法，避免0×乘法=0的边界问题
+- 难度选择在角色之后、武器之前，让玩家先确定角色再考虑难度策略
+- 难度不影响进化系统（进化是构建策略，不应被难度干扰）
 
 ---
 
