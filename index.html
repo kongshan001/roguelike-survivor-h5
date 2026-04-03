@@ -138,6 +138,19 @@ const CFG = {
       boss:     { icon:'🍖', color:'#8d6e63' },
       ghost:    { icon:'🍞', color:'#e0e0e0' }
     }
+  },
+  CHEST: {
+    cost: 20,
+    spawnInterval: 90,
+    maxChests: 2,
+    spawnMinRange: 300,
+    spawnMaxRange: 500,
+    pickupRange: 30,
+    rewards: [
+      { type:'heal', icon:'💊', value:3, desc:'回复3HP' },
+      { type:'speed', icon:'⚡', value:0.5, duration:10, desc:'移速+50% 10秒' },
+      { type:'exp', icon:'💎', value:20, desc:'+20经验' }
+    ]
   }
 };
 
@@ -187,11 +200,14 @@ class Player{
     this.armor=0;this.invTimer=0;this.kills=0;this.gold=0;
     this.weapons=[];this.passives={};
     this.facingAngle=0; // direction player faces (radians)
+    this._speedBoost=0;this._speedBoostTimer=0; // temporary speed boost
   }
   update(dt,input){
+    if(this._speedBoostTimer>0){this._speedBoostTimer-=dt;if(this._speedBoostTimer<=0)this._speedBoost=0;}
+    const spd=this.speed*(1+this._speedBoost);
     if(input.x||input.y){
-      this.x+=input.x*this.speed*dt;
-      this.y+=input.y*this.speed*dt;
+      this.x+=input.x*spd*dt;
+      this.y+=input.y*spd*dt;
       this.facingAngle=Math.atan2(input.y,input.x);
     }
     this.x=clamp(this.x,this.w/2,CFG.MAP_W-this.w/2);
@@ -527,6 +543,40 @@ class Food{
     ctx.textAlign='center';ctx.textBaseline='middle';
     ctx.fillText(this.icon,s.x,s.y);
     ctx.globalAlpha=1;
+  }
+}
+
+// ===== Chest =====
+class Chest{
+  constructor(x,y){
+    this.x=x;this.y=y;this.w=20;this.h=16;this.opened=false;this.t=Math.random()*Math.PI*2;
+  }
+  draw(ctx,cam,canvas){
+    if(this.opened)return;
+    const s=cam.w2s(this.x,this.y,canvas);
+    const x=s.x-this.w/2, y=s.y-this.h/2;
+    this.t+=0.03;
+    const glow=Math.sin(this.t)*0.3+0.7;
+    // Chest body
+    ctx.fillStyle=`rgba(255,193,7,${glow})`;
+    ctx.fillRect(x,y,this.w,this.h);
+    // Chest lid
+    ctx.fillStyle='#ff8f00';
+    ctx.fillRect(x,y,this.w,4);
+    // Lock
+    ctx.fillStyle='#ffd54f';
+    ctx.fillRect(x+8,y+4,4,5);
+    // Keyhole
+    ctx.fillStyle='#5d4037';
+    ctx.fillRect(x+9,y+6,2,2);
+    // Sparkle
+    ctx.fillStyle=`rgba(255,235,59,${glow*0.6})`;
+    ctx.fillRect(x-2,y-3,3,2);
+    ctx.fillRect(x+this.w-1,y-3,3,2);
+    // Price label
+    ctx.fillStyle='#ffd54f';
+    ctx.font='bold 9px monospace';ctx.textAlign='center';
+    ctx.fillText('20💰',s.x,y-5);
   }
 }
 
@@ -1219,9 +1269,9 @@ function pickWeapon(name){
   const p=new Player();
   p.weapons.push(new WEAPON_CLASSES[name](p));
   game={
-    player:p,camera:new Camera(),enemies:[],bullets:[],gems:[],foods:[],
+    player:p,camera:new Camera(),enemies:[],bullets:[],gems:[],foods:[],chests:[],
     effects:[],dmgTexts:[],screenFlash:0,elapsed:0,paused:false,over:false,won:false,bossSpawned:false,
-    spawnTimer:0
+    spawnTimer:0,chestTimer:CFG.CHEST.spawnInterval
   };
   showScene(null);
   document.getElementById('hud').style.display='flex';
@@ -1303,6 +1353,58 @@ function loop(time){
           game.player.x+Math.cos(angle)*d,
           game.player.y+Math.sin(angle)*d,
           hpMul,spdMul));
+      }
+    }
+
+    // Chest spawn
+    if(game.elapsed>30){ // start spawning chests after 30s
+      game.chestTimer-=dt;
+      if(game.chestTimer<=0&&game.chests.length<CFG.CHEST.maxChests){
+        game.chestTimer=CFG.CHEST.spawnInterval;
+        const angle=Math.random()*Math.PI*2;
+        const d=rand(CFG.CHEST.spawnMinRange,CFG.CHEST.spawnMaxRange);
+        const cx=game.player.x+Math.cos(angle)*d;
+        const cy=game.player.y+Math.sin(angle)*d;
+        game.chests.push(new Chest(clamp(cx,20,CFG.MAP_W-20),clamp(cy,20,CFG.MAP_H-20)));
+      }
+    }
+
+    // Chest pickup
+    for(let i=game.chests.length-1;i>=0;i--){
+      const ch=game.chests[i];
+      if(!ch.opened){
+        const d=dist(ch,game.player);
+        if(d<CFG.CHEST.pickupRange){
+          if(game.player.gold>=CFG.CHEST.cost){
+            game.player.gold-=CFG.CHEST.cost;
+            ch.opened=true;
+            // Random reward
+            const reward=CFG.CHEST.rewards[randInt(0,CFG.CHEST.rewards.length-1)];
+            if(reward.type==='heal'){
+              game.player.hp=Math.min(game.player.hp+reward.value,game.player.maxHp);
+              game.dmgTexts.push({x:ch.x,y:ch.y-10,text:`${reward.icon} ${reward.desc}`,life:1.2});
+            }else if(reward.type==='speed'){
+              game.player._speedBoost=reward.value;
+              game.player._speedBoostTimer=reward.duration;
+              game.dmgTexts.push({x:ch.x,y:ch.y-10,text:`${reward.icon} ${reward.desc}`,life:1.2});
+            }else if(reward.type==='exp'){
+              if(game.player.addExp(reward.value)){
+                const choices=generateUpgrades(game.player);
+                if(choices.length>0)showUpgrade(choices);
+              }
+              game.dmgTexts.push({x:ch.x,y:ch.y-10,text:`${reward.icon} ${reward.desc}`,life:1.2});
+            }
+            game.chests.splice(i,1);
+          }else{
+            // Not enough gold — show hint once per chest approach
+            if(!ch._noGoldShown){
+              ch._noGoldShown=true;
+              game.dmgTexts.push({x:ch.x,y:ch.y-10,text:'💰不足',life:0.8});
+            }
+          }
+        }else{
+          ch._noGoldShown=false;
+        }
       }
     }
 
@@ -1473,6 +1575,8 @@ function loop(time){
   for(const g of game.gems)g.draw(ctx,cam,canvas);
   // Foods
   for(const f of game.foods)f.draw(ctx,cam,canvas);
+  // Chests
+  for(const ch of game.chests)ch.draw(ctx,cam,canvas);
   // Enemies
   for(const e of game.enemies){
     e.draw(ctx,cam,canvas);
@@ -1582,6 +1686,12 @@ function loop(time){
     const mx=e.x*mmScale, my=e.y*mmScale;
     const sz=e.isBoss?3:1;
     mmCtx.fillRect(mx-sz/2,my-sz/2,sz,sz);
+  }
+  // Chests
+  mmCtx.fillStyle='#ffd54f';
+  for(const ch of game.chests){
+    const mx=ch.x*mmScale, my=ch.y*mmScale;
+    mmCtx.fillRect(mx-1,my-1,2,2);
   }
   // Player
   mmCtx.fillStyle='#4fc3f7';
