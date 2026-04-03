@@ -144,6 +144,7 @@ const CFG = {
     zombie:   { w:16, h:16, hp:3, speed:40, dmg:1, color:'#4caf50' },
     bat:      { w:14, h:14, hp:1, speed:80, dmg:1, color:'#ab47bc' },
     skeleton: { w:14, h:14, hp:5, speed:20, dmg:1, color:'#e0e0e0', ranged:true, shootCD:2 },
+    elite_skeleton: { w:18, h:18, hp:12, speed:15, dmg:2, color:'#b71c1c', ranged:true, shootCD:1.2, elite:true },
     boss:     { w:32, h:32, hp:200, speed:30, dmg:2, color:'#f44336', isBoss:true },
     ghost:    { w:12, h:12, hp:2, speed:55, dmg:1, color:'#b0bec5', phaseShift:true, teleport:true }
   },
@@ -180,7 +181,8 @@ const CFG = {
       bat:      { icon:'🍇', color:'#ab47bc' },
       skeleton: { icon:'🧀', color:'#ffd54f' },
       boss:     { icon:'🍖', color:'#8d6e63' },
-      ghost:    { icon:'🍞', color:'#e0e0e0' }
+      ghost:    { icon:'🍞', color:'#e0e0e0' },
+      elite_skeleton: { icon:'🧀', color:'#ffd54f' }
     }
   },
   CHEST: {
@@ -532,9 +534,19 @@ class Enemy{
       }
       this.shootTimer-=dt;
       if(this.shootTimer<=0){
-        this.shootTimer=CFG.ENEMY_TYPES.skeleton.shootCD;
+        const tInfo=CFG.ENEMY_TYPES[this.type]||CFG.ENEMY_TYPES.skeleton;
+        this.shootTimer=tInfo.shootCD||2;
         const dir=new V(player.x-this.x,player.y-this.y).norm();
-        bullets.push({x:this.x,y:this.y,vx:dir.x*120,vy:dir.y*120,w:6,h:6,dmg:1,life:3,color:'#ef5350'});
+        if(tInfo.elite){
+          // 3-way spread shot
+          const baseAngle=Math.atan2(dir.y,dir.x);
+          for(let a=-1;a<=1;a++){
+            const ang=baseAngle+a*0.26; // ±15°
+            bullets.push({x:this.x,y:this.y,vx:Math.cos(ang)*100,vy:Math.sin(ang)*100,w:6,h:6,dmg:1.5,life:2.5,color:'#ff5252'});
+          }
+        }else{
+          bullets.push({x:this.x,y:this.y,vx:dir.x*120,vy:dir.y*120,w:6,h:6,dmg:1,life:3,color:'#ef5350'});
+        }
       }
     }else if(this.isBoss){
       this.updateBoss(dt,player,bullets);
@@ -668,6 +680,17 @@ class Enemy{
       ctx.fillStyle='#bdbdbd';ctx.fillRect(x+1,y+2,4,10);ctx.fillRect(x+9,y+2,4,10);
       ctx.fillStyle='#212121';ctx.fillRect(x+4,y+2,2,3);ctx.fillRect(x+8,y+2,2,3);
       ctx.fillStyle='#4e342e';ctx.fillRect(x+12,y+4,3,8);
+    }else if(this.type==='elite_skeleton'){
+      // Elite skeleton - deep red, larger
+      ctx.fillStyle='#b71c1c';ctx.fillRect(x+4,y,this.w-8,this.h);
+      ctx.fillStyle='#880e4f';ctx.fillRect(x+2,y+2,4,12);ctx.fillRect(x+12,y+2,4,12);
+      // Dark eyes with red glow
+      ctx.fillStyle='#ff1744';ctx.fillRect(x+5,y+3,3,3);ctx.fillRect(x+10,y+3,3,3);
+      ctx.fillStyle='#000';ctx.fillRect(x+6,y+4,1,1);ctx.fillRect(x+11,y+4,1,1);
+      // Crossbow (bigger weapon)
+      ctx.fillStyle='#5d4037';ctx.fillRect(x+14,y+3,4,10);
+      // Gold crown
+      ctx.fillStyle='#ffd54f';ctx.fillRect(x+5,y-3,3,3);ctx.fillRect(x+10,y-3,3,3);ctx.fillRect(x+7,y-4,4,2);
     }else if(this.type==='ghost'){
       // Alpha based on phase shift state
       let alpha=1;
@@ -1707,9 +1730,9 @@ function showUpgrade(choices){
 function getSpawnRate(elapsed){
   if(elapsed<120)return{interval:2.5,count:1,types:['zombie']};
   if(elapsed<180)return{interval:2,count:2,types:['zombie','bat']};
-  if(elapsed<240)return{interval:1.2,count:2,types:['zombie','bat','skeleton','ghost']};
-  if(elapsed<270)return{interval:0.8,count:3,types:['zombie','bat','skeleton','ghost']};
-  return{interval:0.5,count:3,types:['zombie','bat','skeleton','ghost']};
+  if(elapsed<210)return{interval:1.2,count:2,types:['zombie','bat','skeleton','ghost']};
+  if(elapsed<270)return{interval:0.8,count:3,types:['zombie','bat','skeleton','ghost','elite_skeleton']};
+  return{interval:0.5,count:3,types:['zombie','bat','skeleton','ghost','elite_skeleton']};
 }
 
 // Scene management
@@ -1984,7 +2007,7 @@ function loop(time){
         SFX.play('kill');
         game.dmgTexts.push({x:e.x,y:e.y-10,text:'💀',life:0.8});
         // Drop gems
-        const val=e.isBoss?50:(e.type==='skeleton'?3:e.type==='ghost'?2:e.type==='bat'?1:2);
+        const val=e.isBoss?50:(e.type==='skeleton'?3:e.type==='ghost'?2:e.type==='bat'?1:e.type==='elite_skeleton'?5:2);
         const count=e.isBoss?8:1;
         for(let g=0;g<count;g++){
           game.gems.push(new Gem(e.x+rand(-10,10),e.y+rand(-10,10),val/count|0||1));
