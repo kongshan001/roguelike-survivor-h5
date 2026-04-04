@@ -2,6 +2,16 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [1.0.0] - 2026-04-04
+
+### 架构重构：单HTML文件 → ES Module模块化
+
+- 将 2633 行 `index.html` 拆分为 ~20 个独立 ES Module 文件
+- 目录结构：`src/core/`、`src/audio/`、`src/systems/`、`src/entities/`、`src/weapons/`、`src/ui/`
+- 采用参数注入模式消除全局 `game` 变量依赖
+- `index.html` 仅保留 HTML/CSS + `<script type="module">` 入口
+- 零构建工具，原生浏览器 ES Module 加载
+
 ## [0.20.0] - 2026-04-04
 
 ### Added
