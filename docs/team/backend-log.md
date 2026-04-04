@@ -11,7 +11,7 @@
 | P0 | 联机技术调研报告（网络同步/协议/服务器/部署） | ✅ 已完成 |
 | P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | 待启动 |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审 |
-| P1 | 可序列化状态接口设计（游戏状态快照格式） | 待启动 |
+| P1 | 可序列化状态接口设计（游戏状态快照格式） | 🔨 设计完成待评审 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | 待评估 |
 | P2 | Docker 容器化部署方案 | 待评估 |
 
@@ -109,3 +109,116 @@ RemotePlayer extends Player
 - 为什么用继承而非组合：当前 Player 类职责清晰，继承改动最小
 - 为什么插值而非预测：肉鸽幸存者对精度要求低，插值实现简单且效果足够
 - 同步频率100ms：肉鸽幸存者是PvE，100ms延迟可接受（< RTT阈值）
+
+---
+
+## 2026-04-04 — 可序列化状态接口设计
+
+### 设计目标
+将 `window.game` 的非序列化结构（函数引用、DOM引用、循环引用）转化为可在网络上传输的纯数据格式，为联机做准备。
+
+### 状态快照格式
+
+```ts
+// 服务器端最小状态（每100ms广播一次）
+interface ServerSnapshot {
+  t: number;              // elapsed time (ms)
+  players: PlayerState[];
+  enemies: EnemyState[];
+  bullets: BulletState[];
+  gems: GemState[];
+  foods: FoodState[];
+  chests: ChestState[];
+}
+
+interface PlayerState {
+  id: string;
+  x: number; y: number;
+  hp: number; maxHp: number;
+  level: number; exp: number;
+  gold: number;
+  weapons: { name: string; level: number; timer: number }[];
+  passives: Record<string, number>;
+  facingAngle: number;
+  dashing: boolean;
+  combo: number;
+}
+
+interface EnemyState {
+  id: string;     // 唯一标识（新增字段）
+  type: string;
+  x: number; y: number;
+  hp: number; maxHp: number;
+  w: number; h: number;
+  frozen: number;  // >0 = 冰冻剩余时间
+  slow: number;    // 减速百分比
+  burn: { dmg: number; t: number } | null;
+}
+
+interface BulletState {
+  x: number; y: number;
+  vx: number; vy: number;
+  dmg: number; life: number;
+  color: string;
+  pierce: number;
+  burnDmg?: number; burnDur?: number;
+}
+```
+
+### 序列化函数设计
+
+```js
+// src/systems/serialize.js
+export function snapshot(game) {
+  return {
+    t: Math.round(game.elapsed * 1000),
+    players: [playerState(game.player)],
+    enemies: game.enemies.map(enemyState),
+    bullets: game.bullets.map(bulletState),
+    gems: game.gems.map(g => ({ x: g.x, y: g.y, value: g.value })),
+    foods: game.foods.map(f => ({ x: f.x, y: f.y, icon: f.icon, age: f.age })),
+    chests: game.chests.map(c => ({ x: c.x, y: c.y, opened: c.opened })),
+  };
+}
+
+function playerState(p) {
+  return {
+    id: 'local', x: Math.round(p.x), y: Math.round(p.y),
+    hp: p.hp, maxHp: p.maxHp, level: p.level, exp: p.exp, gold: p.gold,
+    weapons: p.weapons.map(w => ({ name: w.name, level: w.level, timer: Math.round(w.timer * 100) })),
+    passives: { ...p.passives },
+    facingAngle: Math.round(p.facingAngle * 100) / 100,
+    dashing: p._dashing, combo: p._combo,
+  };
+}
+
+function enemyState(e) {
+  return {
+    id: e._netId || e.type + '_' + e.x.toFixed(0),
+    type: e.type, x: Math.round(e.x), y: Math.round(e.y),
+    hp: Math.round(e.hp * 10) / 10, maxHp: e.maxHp, w: e.w, h: e.h,
+    frozen: e._frozen || 0, slow: e._slow || 0,
+    burn: e._burn ? { dmg: e._burn.dmg, t: Math.round(e._burn.t * 10) / 10 } : null,
+  };
+}
+```
+
+### 反序列化（RemotePlayer专用）
+
+```js
+export function applySnapshot(remotePlayer, snap) {
+  remotePlayer._targetState = snap;
+  remotePlayer._interpBuffer.push({ ...snap, _time: performance.now() });
+  if (remotePlayer._interpBuffer.length > 3) remotePlayer._interpBuffer.shift();
+}
+```
+
+### 对现有代码的改造点
+1. `Enemy` 类新增 `_netId` 字段（服务器分配唯一ID）
+2. `window.game` 新增 `_serialize()` 方法（调用 `snapshot()`）
+3. 新增 `src/systems/serialize.js` 模块
+4. 敌人/子弹/宝石类需确保所有状态字段可序列化（无函数引用）
+
+### 预估快照大小
+- 10敌人 × ~60B + 1玩家 × ~200B + 20子弹 × ~50B + 30宝石 × ~20B ≈ **~1.5KB/快照**
+- 10快照/秒 × 1.5KB = **~15KB/s/玩家**，4人 = ~60KB/s 总带宽

@@ -32,8 +32,8 @@
 | P1 | ~~难度选择系统（简单/普通/困难三档，影响敌人属性+生成速率）~~ | **✅ 已完成 v0.19.0** |
 | P1 | ~~波次进度提示（计时器下方显示下一波即将出现的敌人类型）~~ | **✅ 已完成 v0.20.0** |
 | P0 | Synergy协同系统（被动+被动→隐藏加成，武器+被动→特殊效果） | 🔨 设计完成待实现 |
-| P0 | Quest/挑战系统（角色/难度/击杀目标的挑战任务驱动重玩） | 待启动 |
-| P0 | 永久货币+局外升级商店（金币跨局累积→购买永久buff） | 待启动 |
+| P0 | Quest/挑战系统（角色/难度/击杀目标的挑战任务驱动重玩） | 🔨 设计完成待实现 |
+| P0 | 永久货币+局外升级商店（金币跨局累积→购买永久buff） | 🔨 设计完成待实现 |
 | P1 | 进化路线扩展（+2条新进化路线） | 待启动 |
 | P2 | Ban/Reroll升级选项（不满意时可重抽） | 待评估 |
 
@@ -155,6 +155,184 @@ SYNERGIES: {
 - **为什么用被动+被动和武器+被动两层**：进化系统已覆盖"武器+武器→新武器"，Synergy 补充另外两种组合维度，实现三层协同网络
 - **为什么12种而非更多**：6被动×6被动=15种组合取6种最优=40%覆盖率，6武器×6被动=36种取6种=17%覆盖率，12种足够支撑发现感
 - **为什么效果数值保守**：避免破坏现有平衡，通过百分比加成而非固定值，与被动叠层系统协同
+
+---
+
+## 2026-04-04 — 策划迭代26：永久货币+局外升级商店
+
+### 背景
+竞品调研（DRG: Survivor、Halls of Torment）发现"永久货币+局外升级"是最通用的留存方案。当前localStorage只存统计，缺少跨局成长感。玩家每局获得金币但局间清零，没有持续进步的获得感。
+
+### 设计方案
+
+**永久货币**：局内金币的30%作为"灵魂碎片"跨局保留（局内金币仍正常消耗用于开宝箱）
+
+**局外升级商店**：标题画面新增"升级商店"按钮，购买永久Buff
+
+#### 升级项目（6种）
+
+| 项目 | 名称 | 费用 | 效果 | 最大等级 |
+|------|------|------|------|----------|
+| HP强化 | ❤️ 生命强化 | 20/40/80 | 初始HP+1/+2/+3 | 3 |
+| 移速提升 | 👢 速度训练 | 20/40/80 | 基础移速+5%/+10%/+15% | 3 |
+| 拾取范围 | 📡 拾取精通 | 15/30/60 | 拾取范围+5/+10/+15px | 3 |
+| 经验加成 | 📚 知识汲取 | 25/50/100 | 经验获取+5%/+10%/+15% | 3 |
+| 武器精通 | ⚔ 武器精通 | 30/60/120 | 武器伤害+3%/+6%/+10% | 3 |
+| 金币加成 | 💰 贪婪之心 | 15/30/60 | 灵魂碎片获取率+10%/+20%/+30% | 3 |
+
+#### CFG.SHOP 常量
+
+```js
+SHOP: {
+  soulFragmentRate: 0.3,  // 局内金币的30%转化为灵魂碎片
+  upgrades: {
+    maxhp:    { name:'生命强化', icon:'❤️', maxLevel:3, costs:[20,40,80],   effects:[{hp:1},{hp:2},{hp:3}] },
+    speed:    { name:'速度训练', icon:'👟', maxLevel:3, costs:[20,40,80],   effects:[{speedMul:1.05},{speedMul:1.10},{speedMul:1.15}] },
+    pickup:   { name:'拾取精通', icon:'📡', maxLevel:3, costs:[15,30,60], effects:[{range:5},{range:10},{range:15}] },
+    expbonus:  { name:'知识汲取', icon:'📚', maxLevel:3, costs:[25,50,100], effects:[{mul:1.05},{mul:1.10},{mul:1.15}] },
+    weaponDmg:{ name:'武器精通', icon:'⚡', maxLevel:3, costs:[30,60,120], effects:[{mul:1.03},{mul:1.06},{mul:1.10}] },
+    gold:     { name:'贪婪之心', icon:'💰', maxLevel:3, costs:[15,30,60], effects:[{mul:1.10},{mul:1.20},{mul:1.30}] },
+  }
+}
+```
+
+#### 存档扩展
+
+```js
+// Save._default() 新增字段:
+{
+  soulFragments: 0,         // 灵魂碎片（永久货币）
+  shopUpgrades: {            // 已购买等级
+    maxhp: 0, speed: 0, pickup: 0, expbonus: 0, weaponDmg: 0, gold: 0
+  }
+}
+```
+
+#### 局内应用点
+
+```js
+// beginGame() 时应用 shop upgrades:
+const shop = Save.load().shopUpgrades;
+const pu = CFG.SHOP.upgrades;
+if (shop.maxhp > 0)    player.maxHp += pu.maxhp.effects[shop.maxhp-1].hp;
+if (shop.speed > 0)   player.speed *= pu.speed.effects[shop.speed-1].speedMul;
+if (shop.pickup > 0)  player.pickupRange += pu.pickup.effects[shop.pickup-1].range;
+if (shop.expbonus > 0) player.expBonus += (pu.expbonus.effects[shop.expbonus-1].mul - 1);
+if (shop.weaponDmg > 0) // 武器伤害加成通过全局乘数传递
+```
+
+#### 结算时灵魂碎片计算
+```js
+const earned = Math.floor(game.player.gold * CFG.SHOP.soulFragmentRate);
+// 加上 quest 奖励
+data.soulFragments += earned + questReward;
+```
+
+### 决策记录
+- **为什么30%而非100%**：保留局内金币的意义（开宝箱），30%是"额外收益"而非"替代"
+- **为什么6种升级而非更多**：每种3级=18个购买点，总费用=(20+40+80)×2+(15+30+60)×2+(25+50+100)+(30+60+120)=810灵魂碎片，约需10-15局攒满
+- **为什么效果数值保守**：5%递增×3级=15%，不影响核心平衡但提供"每局变强"的感知
+
+---
+
+## 2026-04-04 — 策划迭代25：Quest/挑战系统设计
+
+### 背景
+竞品调研发现 Halls of Torment 的 Quest 系统是低成本高回报的重玩驱动方案。当前项目 5 分钟一局、3 角色、3 难度，但缺乏跨局目标感。Quest 系统给玩家明确的短期/中期目标，驱动重玩。
+
+### 设计方案
+
+**Quest = 明确目标的挑战任务，完成后获得奖励（永久货币/解锁内容）。**
+
+#### Quest 分类
+
+| 类型 | 示例 | 重玩驱动 |
+|------|------|----------|
+| 角色 | "用战士击杀30只僵尸" | 驱动尝试不同角色 |
+| 难度 | "在噩梦难度存活2分钟" | 驱动挑战高难度 |
+| 击杀 | "单局累计击杀50个敌人" | 驱动追求更好表现 |
+| 武器 | "用飞刀击杀20只蝙蝠" | 驱动尝试不同build |
+| Boss | "在标准难度击败Boss" | 驱动完整通关 |
+| 特殊 | "不受伤存活1分钟" | 驱动特定玩法风格 |
+
+#### 10个初始 Quest + CFG.QUESTS
+
+```js
+QUESTS: [
+  // 角色类
+  { id: 'warrior_30',   name: '战士之道',     icon: '🛡', desc: '用战士击杀30只敌人',
+    check: (s) => s.charId === 'warrior' && s.kills >= 30,
+    reward: { gold: 50 }, difficulty: 'easy' },
+  { id: 'ranger_30',    name: '箭无虚发',     icon: '🏹', desc: '用游侠击杀30只敌人',
+    check: (s) => s.charId === 'ranger' && s.kills >= 30,
+    reward: { gold: 50 }, difficulty: 'easy' },
+
+  // 难度类
+  { id: 'hard_survive',  name: '勇者无惧',     icon: '💀', desc: '噩梦难度存活2分钟',
+    check: (s) => s.difficulty === 'hard' && s.elapsed >= 120,
+    reward: { gold: 100 }, difficulty: 'medium' },
+  { id: 'hard_boss',     name: '噩梦征服者',   icon: '👑', desc: '噩梦难度击败Boss',
+    check: (s) => s.difficulty === 'hard' && s.bossKilled,
+    reward: { gold: 200 }, difficulty: 'hard' },
+
+  // 击杀类
+  { id: 'kill_50',       name: '屠戮者',       icon: '⚔️', desc: '单局击杀50个敌人',
+    check: (s) => s.kills >= 50,
+    reward: { gold: 75 }, difficulty: 'easy' },
+  { id: 'kill_100',      name: '百人斩',       icon: '💯', desc: '单局击杀100个敌人',
+    check: (s) => s.kills >= 100,
+    reward: { gold: 150 }, difficulty: 'medium' },
+
+  // 武器类
+  { id: 'knife_bat',     name: '蝙蝠克星',     icon: '🗡', desc: '用飞刀击杀20只蝙蝠',
+    check: (s) => s.weaponKills?.knife?.bat >= 20,
+    reward: { gold: 80 }, difficulty: 'medium' },
+
+  // Boss类
+  { id: 'kill_boss',     name: '屠龙者',       icon: '🐲', desc: '击败骨龙Boss',
+    check: (s) => s.bossKilled,
+    reward: { gold: 100 }, difficulty: 'medium' },
+
+  // 特殊类
+  { id: 'no_damage',     name: '完美闪避',     icon: '✨', desc: '不受伤存活1分钟',
+    check: (s) => s.elapsed >= 60 && s.damageTaken === 0,
+    reward: { gold: 120 }, difficulty: 'hard' },
+  { id: 'combo_20',      name: '连击大师',     icon: '🔥', desc: '达成20连击',
+    check: (s) => s.bestCombo >= 20,
+    reward: { gold: 100 }, difficulty: 'medium' },
+]
+```
+
+#### 数据追踪（游戏状态新增字段）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `difficulty` | string | 当局难度 |
+| `bossKilled` | boolean | 是否击杀Boss |
+| `damageTaken` | number | 本局总受伤次数 |
+| `bestCombo` | number | 最高连击 |
+| `weaponKills` | object | `{ knife: { bat: 3, zombie: 5 } }` 武器×敌人击杀计数 |
+
+#### Quest UI
+- 标题画面增加「📜 Quest」按钮
+- Quest面板：列表显示所有Quest（未完成=灰色，已完成=绿色✅）
+- 结算画面：显示本局完成的Quest + 奖励金币动画
+
+#### 存档结构（追加到 Save.data）
+
+```js
+{
+  // ...existing fields...
+  completedQuests: ['warrior_30', 'kill_50'],  // 已完成Quest ID列表
+  totalGold: 350,                               // 累计永久货币
+}
+```
+
+### 决策记录
+- **为什么10个不是更多**：MVP阶段10个Quest足够验证系统可行性，后续按需扩展
+- **为什么奖励是金币而非道具**：配合P0的"永久货币+局外升级商店"，金币是通用奖励
+- **为什么用函数式 check**：比数值阈值更灵活，支持复杂条件组合
+- **为什么不区分每日/每周**：5分钟一局的轻量游戏不需要日活压力设计
 
 ---
 
