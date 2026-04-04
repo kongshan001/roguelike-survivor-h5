@@ -174,15 +174,17 @@ export class Bible extends Weapon {
   }
   draw(ctx, cam, canvas) {
     const s = cam.w2s(this.owner.x, this.owner.y, canvas);
+    const bonus = this.owner.getWeaponBonus ? this.owner.getWeaponBonus('bible') : {};
+    const rad = this.radius + (bonus.radiusBonus || 0);
     ctx.strokeStyle = `rgba(255,193,7,${0.3 + Math.sin(this.angle * 2) * 0.15})`;
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(s.x, s.y, this.radius, 0, Math.PI * 2);
+    ctx.arc(s.x, s.y, rad, 0, Math.PI * 2);
     ctx.stroke();
     for (let i = 0; i < 2; i++) {
       const a = this.angle + Math.PI * i;
-      const cx = s.x + Math.cos(a) * this.radius * 0.6;
-      const cy = s.y + Math.sin(a) * this.radius * 0.6;
+      const cx = s.x + Math.cos(a) * rad * 0.6;
+      const cy = s.y + Math.sin(a) * rad * 0.6;
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(a + Math.PI / 2);
