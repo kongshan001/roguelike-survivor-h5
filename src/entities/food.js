@@ -1,6 +1,6 @@
 // ===== Food Entity =====
 import { CFG } from '../core/config.js';
-import { V, dist } from '../core/math.js';
+import { V, dist, distSq } from '../core/math.js';
 
 export class Food {
   constructor(x, y, enemyType) {
@@ -11,13 +11,14 @@ export class Food {
   update(dt, player, game) {
     this.age += dt;
     if (this.age >= this.lifetime) return false;
-    let d = dist(this, player);
+    let ds = distSq(this, player);
     const dir = new V(player.x - this.x, player.y - this.y).norm();
-    if (d < player.pickupRange) {
+    const prSq = player.pickupRange * player.pickupRange;
+    if (ds < prSq) {
       this.x += dir.x * CFG.GEM_FLY_SPEED * dt;
       this.y += dir.y * CFG.GEM_FLY_SPEED * dt;
-      d = dist(this, player);
-      if (d < 12) {
+      ds = distSq(this, player);
+      if (ds < 144) { // 12*12
         const wasFull = player.hp >= player.maxHp;
         player.hp = Math.min(player.hp + CFG.FOOD.healAmount, player.maxHp);
         if (wasFull) {
@@ -28,6 +29,7 @@ export class Food {
         return 'picked';
       }
     } else {
+      const d = Math.sqrt(ds);
       const spd = 30 + 40 * (1 - Math.min(d / 800, 1));
       this.x += dir.x * spd * dt;
       this.y += dir.y * spd * dt;

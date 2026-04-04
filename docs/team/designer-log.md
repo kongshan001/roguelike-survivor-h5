@@ -31,11 +31,130 @@
 | P1 | ~~屏幕震动系统（击杀/Boss/受伤时屏幕抖动反馈）~~ | **✅ 已完成 v0.18.0** |
 | P1 | ~~难度选择系统（简单/普通/困难三档，影响敌人属性+生成速率）~~ | **✅ 已完成 v0.19.0** |
 | P1 | ~~波次进度提示（计时器下方显示下一波即将出现的敌人类型）~~ | **✅ 已完成 v0.20.0** |
-| P0 | Synergy协同系统（被动+被动→隐藏加成，武器+被动→特殊效果） | 待启动 |
+| P0 | Synergy协同系统（被动+被动→隐藏加成，武器+被动→特殊效果） | 🔨 设计完成待实现 |
 | P0 | Quest/挑战系统（角色/难度/击杀目标的挑战任务驱动重玩） | 待启动 |
 | P0 | 永久货币+局外升级商店（金币跨局累积→购买永久buff） | 待启动 |
 | P1 | 进化路线扩展（+2条新进化路线） | 待启动 |
 | P2 | Ban/Reroll升级选项（不满意时可重抽） | 待评估 |
+
+---
+
+## 2026-04-04 — 策划迭代24：Synergy协同系统设计
+
+### 背景
+竞品调研发现 20 Minutes Till Dawn 的 Synergy 系统是性价比最高的 Build 深度方案。当前进化系统只有"武器+武器→新武器"单一路径，Synergy 在此基础上增加"被动+被动→隐藏加成"和"武器+被动→特殊效果"两层，极大增加 Build 深度和发现感。
+
+### 设计方案
+
+**Synergy = 玩家同时拥有指定组合时，自动触发隐藏加成效果。**
+
+#### 一、被动+被动 Synergy（6种）
+
+| Synergy | 条件 | 效果 | CONFIG 常量 |
+|---------|------|------|------------|
+| 🔪 风之锋刃 | 暴击戒指 + 疾风靴 | 暴击时向面朝方向发射1把飞刀(伤害=暴击伤害×0.5) | `crit_boots` |
+| 🛡 铁壁之心 | 护甲 + 生命结晶 | 护甲效果翻倍(每点护甲抵消2伤害而非1) | `armor_maxhp` |
+| 💎 贪婪之魂 | 磁铁 + 暴击戒指 | 暴击时额外掉落1个宝石(价值=击杀掉落价值) | `magnet_crit` |
+| 🏃 生命奔流 | 疾风靴 + 再生护符 | 移动时回复速度翻倍(再生间隔÷2) | `boots_regen` |
+| 💪 钢铁堡垒 | 护甲 + 再生护符 | 低于30%HP时护甲值+3临时加成 | `armor_regen` |
+| 🔮 命运齿轮 | 磁铁 + 生命结晶 | 拾取宝石时2%概率回复1HP | `magnet_maxhp` |
+
+#### 二、武器+被动 Synergy（6种）
+
+| Synergy | 条件 | 效果 | CONFIG 常量 |
+|---------|------|------|------------|
+| ⛪ 圣水膨胀 | 圣水 + 生命结晶 | 圣水球体半径+30% | `holywater_maxhp` |
+| 🗡 致命飞刀 | 飞刀 + 暴击戒指 | 飞刀可暴击(继承玩家暴击率+暴击伤害) | `knife_crit` |
+| ⚡ 过载闪电 | 闪电 + 磁铁 | 闪电链数+1，射程+50px | `lightning_magnet` |
+| 🔥 烈焰圣经 | 圣经 + 疾风靴 | 圣经旋转速度×1.5，范围+20px | `bible_boots` |
+| 🌋 熔岩法杖 | 火焰法杖 + 护甲 | 火焰锥范围+40px，点燃持续+1秒 | `firestaff_armor` |
+| ❄️ 极寒光环 | 冰冻光环 + 再生护符 | 冰冻概率+5%/秒，冰冻时间+0.5秒 | `frost_regen` |
+
+#### CFG.SYNERGIES 配置
+
+```js
+SYNERGIES: {
+  // 被动+被动
+  crit_boots: {
+    name: '风之锋刃', icon: '🔪',
+    req: { passives: ['crit', 'speedboots'] },
+    desc: '暴击时发射飞刀',
+    onCritKnife: { dmgMul: 0.5, speed: 250, life: 1.0 }
+  },
+  armor_maxhp: {
+    name: '铁壁之心', icon: '🛡',
+    req: { passives: ['armor', 'maxhp'] },
+    desc: '护甲效果翻倍',
+    armorDouble: true
+  },
+  magnet_crit: {
+    name: '贪婪之魂', icon: '💎',
+    req: { passives: ['magnet', 'crit'] },
+    desc: '暴击额外掉落宝石',
+    bonusGemValue: 2
+  },
+  boots_regen: {
+    name: '生命奔流', icon: '🏃',
+    req: { passives: ['speedboots', 'regen'] },
+    desc: '移动时再生速度翻倍',
+    movingRegenSpeedMul: 2
+  },
+  armor_regen: {
+    name: '钢铁堡垒', icon: '💪',
+    req: { passives: ['armor', 'regen'] },
+    desc: '低HP时护甲+3',
+    lowHpThreshold: 0.3, tempArmorBonus: 3
+  },
+  magnet_maxhp: {
+    name: '命运齿轮', icon: '🔮',
+    req: { passives: ['magnet', 'maxhp'] },
+    desc: '拾取宝石2%回复1HP',
+    gemHealChance: 0.02
+  },
+  // 武器+被动
+  holywater_maxhp: {
+    name: '圣水膨胀', icon: '⛪',
+    req: { weapon: 'holywater', passive: 'maxhp' },
+    desc: '圣水球体半径+30%',
+    weaponBonus: { radiusMul: 1.3 }
+  },
+  knife_crit: {
+    name: '致命飞刀', icon: '🗡',
+    req: { weapon: 'knife', passive: 'crit' },
+    desc: '飞刀可暴击',
+    weaponBonus: { canCrit: true }
+  },
+  lightning_magnet: {
+    name: '过载闪电', icon: '⚡',
+    req: { weapon: 'lightning', passive: 'magnet' },
+    desc: '闪电链+1，射程+50',
+    weaponBonus: { extraChains: 1, rangeBonus: 50 }
+  },
+  bible_boots: {
+    name: '烈焰圣经', icon: '🔥',
+    req: { weapon: 'bible', passive: 'speedboots' },
+    desc: '圣经速度×1.5，范围+20',
+    weaponBonus: { speedMul: 1.5, radiusBonus: 20 }
+  },
+  firestaff_armor: {
+    name: '熔岩法杖', icon: '🌋',
+    req: { weapon: 'firestaff', passive: 'armor' },
+    desc: '锥形范围+40px，点燃+1s',
+    weaponBonus: { coneBonus: 40, burnDurBonus: 1 }
+  },
+  frost_regen: {
+    name: '极寒光环', icon: '❄️',
+    req: { weapon: 'frostaura', passive: 'regen' },
+    desc: '冰冻概率+5%/s，冰冻+0.5s',
+    weaponBonus: { freezeBonus: 0.05, freezeDurBonus: 0.5 }
+  }
+}
+```
+
+### 决策记录
+- **为什么用被动+被动和武器+被动两层**：进化系统已覆盖"武器+武器→新武器"，Synergy 补充另外两种组合维度，实现三层协同网络
+- **为什么12种而非更多**：6被动×6被动=15种组合取6种最优=40%覆盖率，6武器×6被动=36种取6种=17%覆盖率，12种足够支撑发现感
+- **为什么效果数值保守**：避免破坏现有平衡，通过百分比加成而非固定值，与被动叠层系统协同
 
 ---
 

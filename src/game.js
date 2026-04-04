@@ -1,6 +1,6 @@
 // ===== Game State & Main Loop =====
 import { CFG } from './core/config.js';
-import { V, rand, randInt, clamp, dist } from './core/math.js';
+import { V, rand, randInt, clamp, dist, distSq } from './core/math.js';
 import { Save } from './core/save.js';
 import { SFX, screenShake, playerCrits } from './audio/sfx.js';
 import { Camera } from './systems/camera.js';
@@ -442,16 +442,17 @@ function loop(time) {
         }
       }
     }
-    // Gems
+    // Gems (use distSq for hot-path comparisons)
+    const PR = window.game.player.pickupRange;
     for (let i = window.game.gems.length - 1; i >= 0; i--) {
       const g = window.game.gems[i];
-      let d = dist(g, window.game.player);
+      let ds = distSq(g, window.game.player);
       const dir = new V(window.game.player.x - g.x, window.game.player.y - g.y).norm();
-      if (d < window.game.player.pickupRange) {
+      if (ds < PR * PR) {
         g.x += dir.x * CFG.GEM_FLY_SPEED * dt;
         g.y += dir.y * CFG.GEM_FLY_SPEED * dt;
-        d = dist(g, window.game.player);
-        if (d < 12) {
+        ds = distSq(g, window.game.player);
+        if (ds < 144) { // 12*12
           const comboBonus = window.game.player.comboExpBonus();
           if (window.game.player.addExp(Math.ceil(g.value * comboBonus))) {
             SFX.play('levelup');
@@ -462,6 +463,7 @@ function loop(time) {
           window.game.gems.splice(i, 1);
         }
       } else {
+        const d = Math.sqrt(ds);
         const spd = 40 + 60 * (1 - Math.min(d / 1000, 1));
         g.x += dir.x * spd * dt;
         g.y += dir.y * spd * dt;
