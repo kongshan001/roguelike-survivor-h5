@@ -158,5 +158,17 @@ export const CFG = {
   },
   UPGRADE_REROLL: {
     maxReroll: 1
-  }
+  },
+  QUESTS: [
+    { id:'warrior_30', name:'战士之道', icon:'🛡', desc:'用战士击杀30只敌人', check:s=>s.charId==='warrior'&&s.kills>=30, reward:50 },
+    { id:'ranger_30',  name:'箭无虚发', icon:'🏹', desc:'用游侠击杀30只敌人', check:s=>s.charId==='ranger'&&s.kills>=30, reward:50 },
+    { id:'hard_survive',name:'勇者无惧', icon:'💀', desc:'噩梦难度存活2分钟', check:s=>s.difficulty==='hard'&&s.elapsed>=120, reward:100 },
+    { id:'hard_boss',   name:'噩梦征服者',icon:'👑',desc:'噩梦难度击败Boss', check:s=>s.difficulty==='hard'&&s.bossKilled, reward:200 },
+    { id:'kill_50',     name:'屠戮者',   icon:'⚔️',desc:'单局击杀50个敌人', check:s=>s.kills>=50, reward:75 },
+    { id:'kill_100',    name:'百人斩',   icon:'💯',desc:'单局击杀100个敌人',check:s=>s.kills>=100, reward:150 },
+    { id:'kill_boss',   name:'屠龙者',   icon:'🐲',desc:'击败骨龙Boss',     check:s=>s.bossKilled, reward:100 },
+    { id:'no_damage',   name:'完美闪避', icon:'✨',desc:'不受伤存活1分钟',   check:s=>s.elapsed>=60&&s.damageTaken===0, reward:120 },
+    { id:'combo_20',    name:'连击大师', icon:'🔥',desc:'达成20连击',       check:s=>s.bestCombo>=20, reward:100 },
+    { id:'combo_50',    name:'连击之王', icon:'💥',desc:'达成50连击',       check:s=>s.bestCombo>=50, reward:200 },
+  ]
 };

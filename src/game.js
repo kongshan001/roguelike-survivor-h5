@@ -20,6 +20,7 @@ import {
   FireKnife, HolyDomain,
 } from './weapons/registry.js';
 import { drawHUD } from './ui/hud.js';
+import { showQuestPanel, hideQuestPanel } from './ui/quest-panel.js';
 
 // Export game state globally for test access
 window.game = null;
@@ -174,6 +175,7 @@ function beginGame(weaponName) {
     over: false,
     won: false,
     bossSpawned: false,
+    bossKilled: false,
     spawnTimer: 0,
     chestTimer: CFG.CHEST.spawnInterval,
     shake: null,
@@ -197,6 +199,8 @@ function restartGame() {
   updateTitleStats();
 }
 window.restartGame = restartGame;
+window.showQuestPanel = showQuestPanel;
+window.hideQuestPanel = hideQuestPanel;
 
 function updateTitleStats() {
   const d = Save.load();
@@ -215,13 +219,38 @@ function endGame(won) {
   confirmEl.style.display = 'none';
   SFX.play(won ? 'victory' : 'gameover');
   const saveResult = Save.record(window.game.player.kills, window.game.elapsed, window.game.player.charId, window.game.player._bestCombo);
+
+  // Quest checking
+  const stats = {
+    charId: window.game.player.charId,
+    kills: window.game.player.kills,
+    difficulty: window.game.difficulty,
+    elapsed: window.game.elapsed,
+    bossKilled: window.game.bossKilled,
+    damageTaken: window.game.player._damageTaken,
+    bestCombo: window.game.player._bestCombo
+  };
+  const newlyCompleted = CFG.QUESTS.filter(q => q.check(stats)).map(q => q.id);
+  const questResult = newlyCompleted.length > 0 ? Save.recordQuests(newlyCompleted) : { firstTime: [] };
+
   document.getElementById('result-title').textContent = won ? '🏆 胜利! 🏆' : '💀 失败';
   document.getElementById('result-title').style.color = won ? '#ffd54f' : '#ef5350';
   const m = Math.floor(window.game.elapsed / 60), s = Math.floor(window.game.elapsed % 60);
   const bestM = Math.floor(saveResult.data.bestTime / 60), bestS = Math.floor(saveResult.data.bestTime % 60);
   const newTag = saveResult.newBest ? ' 🆕新纪录!' : '';
+
+  // Build quest completion text
+  let questHtml = '';
+  if (questResult.firstTime.length > 0) {
+    const questNames = questResult.firstTime.map(id => {
+      const q = CFG.QUESTS.find(qq => qq.id === id);
+      return q ? `${q.icon} ${q.name}` : id;
+    }).join('<br>');
+    questHtml = `<br><br>--- 📜 新任务完成 ---<br>${questNames}`;
+  }
+
   document.getElementById('result-stats').innerHTML =
-    `击杀: ${window.game.player.kills}${newTag}<br>存活: ${m}:${s.toString().padStart(2, '0')}<br>金币: ${window.game.player.gold}<br>🔥 最高连击: ${window.game.player._bestCombo}<br><br>--- 最佳记录 ---<br>最高击杀: ${saveResult.data.bestScore}<br>最长存活: ${bestM}:${bestS.toString().padStart(2, '0')}<br>总游玩: ${saveResult.data.gamesPlayed}局`;
+    `击杀: ${window.game.player.kills}${newTag}<br>存活: ${m}:${s.toString().padStart(2, '0')}<br>金币: ${window.game.player.gold}<br>🔥 最高连击: ${window.game.player._bestCombo}<br><br>--- 最佳记录 ---<br>最高击杀: ${saveResult.data.bestScore}<br>最长存活: ${bestM}:${bestS.toString().padStart(2, '0')}<br>总游玩: ${saveResult.data.gamesPlayed}局${questHtml}`;
   setTimeout(() => showScene('result-screen'), 500);
 }
 window.endGame = endGame;
@@ -403,7 +432,7 @@ function loop(time) {
             window.game.foods.push(new Food(e.x + rand(-12, 12), e.y + rand(-12, 12), e.type));
           }
         }
-        if (e.isBoss && window.game.elapsed >= 270) { endGame(true); return; }
+        if (e.isBoss && window.game.elapsed >= 270) { window.game.bossKilled = true; endGame(true); return; }
         window.game.enemies.splice(i, 1);
       }
     }

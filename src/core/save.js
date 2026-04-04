@@ -6,6 +6,7 @@ export const Save = {
     return {
       version: CFG.SAVE.version,
       bestScore: 0, bestTime: 0, totalKills: 0, gamesPlayed: 0, bestCombo: 0,
+      completedQuests: [],
       characters: {
         mage: { bestScore: 0, bestTime: 0 },
         warrior: { bestScore: 0, bestTime: 0 },
@@ -39,5 +40,18 @@ export const Save = {
     }
     this.save(d);
     return { data: d, newBest };
+  },
+  recordQuests(newQuestIds) {
+    const d = this.load();
+    if (!d.completedQuests) d.completedQuests = [];
+    const firstTime = [];
+    for (const id of newQuestIds) {
+      if (!d.completedQuests.includes(id)) {
+        d.completedQuests.push(id);
+        firstTime.push(id);
+      }
+    }
+    this.save(d);
+    return { data: d, firstTime };
   }
 };

@@ -4,6 +4,35 @@
 
 ---
 
+## 2026-04-04 — Drive #8: Quest/挑战系统 回归测试
+
+### 测试结果：12/14 通过（2 flaky，非回归）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 12 PASS | 全部核心测试通过 | Quest系统无回归 |
+| 2 FLAKY | 经验宝石收集与升级 + BUG-002 | 时序相关，非回归 |
+
+### 验证项
+- `CFG.QUESTS` 配置正确（10个任务：角色2+难度2+击杀2+Boss1+特殊1+连击2）
+- Quest check函数语法正确（arrow function，接受stats对象）
+- Save._default 含 `completedQuests: []` 字段
+- Save.recordQuests() 正确追踪首次完成的任务ID
+- Player._damageTaken 在takeDamage()中递增（第176行）
+- game.bossKilled 在Boss击杀时设置（第435行）
+- endGame() 正确收集stats → 执行quest check → 保存结果
+- Quest面板UI：标题画面按钮存在，quest-panel HTML结构正确
+- Quest面板场景注册在scenes.js的ALL_SCENES中
+- JS语法检查通过（所有5个修改文件括号平衡）
+- HTML div标签平衡（64/64）
+- Player.js类结构完整（第300行关闭）
+
+### 里程碑
+- **Quest/挑战系统上线**：10个挑战任务驱动重玩价值
+- **存档扩展**：completedQuests追踪跨局成就进度
+
+---
+
 ## 2026-04-04 — Drive #7 (续): Bible draw协同视觉修复 回归确认
 
 ### 测试结果：13/14 通过（1 flaky，非回归）

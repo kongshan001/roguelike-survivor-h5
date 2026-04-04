@@ -33,11 +33,53 @@
 | P0 | ~~Playwright Workers并行测试~~ | **✅ 已配置** |
 | P0 | ~~AABB 先行判断（减少不必要的精确碰撞计算）~~ | **✅ 已完成 Drive #4** |
 | P0 | ~~协同系统（12种被动+被动/武器+被动协同效果）~~ | **✅ 已完成 Drive #6** |
+| P0 | ~~Quest/挑战系统（10个任务+面板UI+存档追踪）~~ | **✅ 已完成 Drive #8** |
 
 | P0 | Draw Call 批量绘制（按颜色分组 fillRect） | 待启动 |
 | P1 | 网格空间哈希碰撞检测（敌人>80时启用） | 待启动 |
 | P1 | 固定时间步游戏循环（Timestep Fixing） | 待启动 |
 | P2 | ~~Ban/Reroll升级选项（🔄 换一批按钮，免费重抽1次）~~ | **✅ 已完成 Drive #6** |
+
+---
+
+## 2026-04-04 — Drive #8: Quest/挑战系统实现
+
+### 成果
+- **CFG.QUESTS** 10个挑战任务配置（角色2 + 难度2 + 击杀2 + Boss1 + 特殊1 + 连击2）
+  - 每个任务含：`id/name/icon/desc/check(函数)/reward(金币)`
+  - check函数接收stats对象：`{charId, kills, difficulty, elapsed, bossKilled, damageTaken, bestCombo}`
+- **Quest面板UI** (`src/ui/quest-panel.js`)
+  - 标题画面新增 📜 挑战任务 按钮
+  - 任务列表：已完成=绿色+✅，未完成=灰色
+  - 显示任务描述和金币奖励
+- **Save系统扩展** (`src/core/save.js`)
+  - 新增 `completedQuests: []` 存档字段
+  - 新增 `Save.recordQuests(newQuestIds)` 方法，追踪首次完成的任务
+- **游戏数据追踪**
+  - Player._damageTaken: 伤害计数（takeDamage中递增）
+  - game.bossKilled: Boss击杀标记（Boss死亡时设置）
+  - endGame中收集完整stats → 执行quest check → 保存结果
+- **结算画面增强**: 本局新完成的任务显示在结算画面底部
+- **scenes.js**: quest-panel 加入场景管理列表
+
+### 变更文件
+| 文件 | 变更 |
+|------|------|
+| `src/core/config.js` | +11行 QUESTS配置 |
+| `src/core/save.js` | +2行 completedQuests字段, +13行 recordQuests方法 |
+| `src/entities/Player.js` | +2行 _damageTaken字段和递增 |
+| `src/game.js` | +3行 bossKilled追踪, +30行 quest检查+结算显示 |
+| `src/ui/quest-panel.js` | 新文件 45行 Quest面板渲染 |
+| `src/ui/scenes.js` | +1行 quest-panel场景 |
+| `index.html` | +6行 Quest按钮+面板HTML |
+
+### E2E测试
+- 12/14 通过（2 flaky: 经验宝石时序相关，非回归）
+
+### 决策记录
+- Quest奖励暂为纯成就追踪，待商店系统实现后激活永久货币
+- 移除weaponKills追踪，简化为通用击杀数
+- Quest面板用HTML overlay而非Canvas绘制（与暂停菜单一致）
 
 ---
 

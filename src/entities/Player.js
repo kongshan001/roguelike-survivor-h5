@@ -45,6 +45,9 @@ export class Player {
     this.activeSynergies = new Set();
     this._isMoving = false;
 
+    // Quest tracking
+    this._damageTaken = 0;
+
     // External callbacks (set by game layer)
     this.onSFX = null;        // (id) => void
     this.onScreenShake = null; // (type) => void
@@ -170,6 +173,7 @@ export class Player {
     }
     const realDmg = Math.max(1, Math.ceil(d * dMul) - armorVal);
     this.hp -= realDmg;
+    this._damageTaken++;
     this.invTimer = CFG.INVINCIBLE_TIME;
     this._shakeScreen('hurt');
     this._playSFX('hit');

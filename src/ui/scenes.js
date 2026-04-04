@@ -1,7 +1,7 @@
 // ===== Scene Management =====
 import { isMobile } from './input.js';
 
-const ALL_SCENES = ['title-screen', 'char-select', 'diff-select', 'weapon-select', 'upgrade-panel', 'result-screen'];
+const ALL_SCENES = ['title-screen', 'char-select', 'diff-select', 'weapon-select', 'upgrade-panel', 'result-screen', 'quest-panel'];
 
 export function showScene(id) {
   ALL_SCENES.forEach(s => {
