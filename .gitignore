@@ -23,7 +23,8 @@ tests/report/
 .superpowers/brainstorm/
 
 # Claude Code
-.claude/
+.claude/*
+!.claude/agents/
 
 # Python
 __pycache__/
