@@ -1,6 +1,6 @@
 // ===== Game State & Main Loop =====
 import { CFG } from './core/config.js';
-import { V, rand, randInt, clamp, dist, distSq } from './core/math.js';
+import { V, rand, randInt, clamp, dist, distSq, aabbOverlap } from './core/math.js';
 import { Save } from './core/save.js';
 import { SFX, screenShake, playerCrits } from './audio/sfx.js';
 import { Camera } from './systems/camera.js';
@@ -345,8 +345,7 @@ function loop(time) {
     for (const e of window.game.enemies) {
       e.update(dt, window.game.player, window.game.bullets);
       if (e.hitCD <= 0 && !(e.type === 'ghost' && e.teleportCD > 0)) {
-        if (Math.abs(e.x - window.game.player.x) < (e.w + window.game.player.w) / 2 &&
-            Math.abs(e.y - window.game.player.y) < (e.h + window.game.player.h) / 2) {
+        if (aabbOverlap(e.x, e.y, e.w, e.h, window.game.player.x, window.game.player.y, window.game.player.w, window.game.player.h)) {
           if (window.game.player.takeDamage(e.dmg)) {
             e.hitCD = 1;
             window.game.screenFlash = 0.2;
@@ -417,7 +416,7 @@ function loop(time) {
         for (let j = window.game.enemies.length - 1; j >= 0; j--) {
           const e = window.game.enemies[j];
           if (b.hit && b.hit.has(e)) continue;
-          if (Math.abs(b.x - e.x) < (b.w + e.w) / 2 && Math.abs(b.y - e.y) < (b.h + e.h) / 2) {
+          if (aabbOverlap(b.x, b.y, b.w, b.h, e.x, e.y, e.w, e.h)) {
             e.hurt(b.dmg, pCrits());
             if (b.burnDmg) {
               if (!e._burn) e._burn = { dmg: 0, t: 0 };
@@ -432,8 +431,7 @@ function loop(time) {
           }
         }
       } else {
-        if (Math.abs(b.x - window.game.player.x) < (b.w + window.game.player.w) / 2 &&
-          Math.abs(b.y - window.game.player.y) < (b.h + window.game.player.h) / 2) {
+        if (aabbOverlap(b.x, b.y, b.w, b.h, window.game.player.x, window.game.player.y, window.game.player.w, window.game.player.h)) {
           if (window.game.player.takeDamage(b.dmg)) {
             window.game.bullets.splice(i, 1);
             window.game.screenFlash = 0.3;

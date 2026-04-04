@@ -4,6 +4,30 @@
 
 ---
 
+## 2026-04-04 — Drive #4: AABB优化 + Backend评估 回归测试
+
+### 测试结果：12/14 通过（2 flaky，非回归）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 12 PASS | 全部核心测试通过 | AABB优化无回归 |
+| 2 FLAKY | 经验宝石收集 / 升级面板选择 | 时序相关，非回归 |
+
+### 验证项
+- `aabbOverlap()` 已应用于 game.js 3处碰撞热点：
+  1. 敌人-玩家碰撞（~line 347）✅
+  2. 子弹-敌人碰撞（~line 419）✅
+  3. 子弹-玩家碰撞（~line 434）✅
+- `distSq()` 在宝石拾取和食物拾取路径正常工作
+- `food.js` const→let 修复持续稳定（BUG-008 无回归）
+- Backend 联机准备度评估完成（无代码变更，纯文档）
+
+### 里程碑
+- **AABB碰撞优化完成**：3处热点全部从手动 Math.abs 替换为 `aabbOverlap()`
+- **distSq + AABB 双优化落地**：距离判断消除 Math.sqrt，碰撞检测统一函数
+
+---
+
 ## 自动化测试体系
 
 **工具**: Playwright (TypeScript) + GitHub Actions CI

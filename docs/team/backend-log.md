@@ -9,11 +9,33 @@
 | 优先级 | 事项 | 状态 |
 |--------|------|------|
 | P0 | 联机技术调研报告（网络同步/协议/服务器/部署） | ✅ 已完成 |
-| P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | 待启动 |
+| P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | 🔨 联机准备度评估完成 |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审 |
 | P1 | 可序列化状态接口设计（游戏状态快照格式） | 🔨 设计完成待评审 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | 待评估 |
 | P2 | Docker 容器化部署方案 | 待评估 |
+
+---
+
+## 2026-04-04 — Drive #4: 联机准备度快速评估
+
+### 成果
+- 完成代码库联机准备度评估（game.js / Player.js / camera.js）
+- 确认 LocalPlayer/RemotePlayer 拆分方案仍然适用
+
+### 评估结果
+
+| 文件 | 耦合度 | 联机改造复杂度 | 说明 |
+|------|--------|---------------|------|
+| game.js | HIGH | HIGH | window.game 单例，全局状态紧耦合 |
+| Player.js | MEDIUM | LOW-MEDIUM | 回调模式可扩展，类结构较干净 |
+| camera.js | LOW | LOW | 单目标跟随，易扩展为多目标 |
+
+### 结论
+- LocalPlayer/RemotePlayer 设计方向正确，Player 回调模式天然支持远程扩展
+- **主要瓶颈**：game.js 全局状态重构，非 Player 架构问题
+- 序列化接口设计可用，快照格式合理（~1.5KB/快照）
+- 建议下一步：先重构 game.js 为可序列化状态，再做 Player 拆分
 
 ---
 
