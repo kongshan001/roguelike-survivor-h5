@@ -17,6 +17,7 @@ package-lock.json
 # Playwright
 test-results/
 playwright-report/
+tests/report/
 .playwright-mcp/
 
 # Superpowers (brainstorm artifacts)
