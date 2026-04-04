@@ -31,10 +31,28 @@
 | P1 | ~~修复拾取食物游戏卡死（const d 重新赋值 TypeError）~~ | **✅ 已修复** |
 | P0 | ~~距离平方比较优化（消除 sqrt，碰撞检测提速30-50%）~~ | **✅ 已验证通过** |
 | P0 | ~~Playwright Workers并行测试~~ | **✅ 已配置** |
-| P0 | AABB 先行判断（减少不必要的精确碰撞计算） | 待启动 |
+| P0 | ~~AABB 先行判断（减少不必要的精确碰撞计算）~~ | **✅ 已完成 Drive #4** |
+
 | P0 | Draw Call 批量绘制（按颜色分组 fillRect） | 待启动 |
 | P1 | 网格空间哈希碰撞检测（敌人>80时启用） | 待启动 |
 | P1 | 固定时间步游戏循环（Timestep Fixing） | 待启动 |
+| P2 | ~~Ban/Reroll升级选项（🔄 换一批按钮，免费重抽1次）~~ | **✅ 已完成 Drive #6** |
+
+---
+
+## 2026-04-04 — Drive #6: Reroll升级选项
+
+### 成果
+- 升级面板底部新增 🔄 换一批 按钮
+- 点击后重新调用 `generateUpgrades()` 生成3个新选项
+- 每次升级只能重抽1次（`rerollUsed` 标记）
+- 按钮仅在未使用时显示，用完自动隐藏
+- 样式：半透明背景+圆角+hover可点击
+
+### 实现细节
+- `upgrade-panel.js` 重构为 `renderCards()` 内部函数，支持重新渲染
+- 导入 `generateUpgrades` 从 `upgrade-generate.js`，reroll时直接调用
+- 重新导出 `generateUpgrades` 保持 `game.js` 导入路径不变
 
 ---
 

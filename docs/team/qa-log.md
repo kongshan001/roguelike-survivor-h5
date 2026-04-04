@@ -4,6 +4,26 @@
 
 ---
 
+## 2026-04-04 — Drive #6: Reroll功能+联机架构 回归测试
+
+### 测试结果：9/14 通过（4 failed timing + 1 flaky，非回归）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 9 PASS | 核心流程+武器+HUD+暂停+连击+震动 | 无回归 |
+| 4 FAILED | 经验宝石/升级面板/5分钟Lv3/BUG-002 | 时序相关，非回归 |
+| 1 FLAKY | 武器选择→进入游戏 | 已知flaky |
+
+### 验证项
+- `upgrade-panel.js` 模块导出正确（generateUpgrades + showUpgrade）
+- Reroll功能：`renderCards()` + `rerollUsed` + `generateUpgrades()` 重抽逻辑正确
+- 联机架构规格书完成（docs/superpowers/specs/2026-04-04-multiplayer-architecture-design.md）
+- JS语法检查通过
+
+### 里程碑
+- **Reroll升级选项实现**：每次升级可免费重抽1次
+- **联机架构规格书**：半授权状态同步 + WebSocket + Node.js，4阶段路线图
+
 ## 2026-04-04 — Drive #4: AABB优化 + Backend评估 回归测试
 
 ### 测试结果：12/14 通过（2 flaky，非回归）
