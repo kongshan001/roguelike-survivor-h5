@@ -298,11 +298,13 @@ test.describe('regression — 历史缺陷回归', () => {
 
   test('BUG-003: DPR渲染无偏移（玩家在屏幕中心）', async ({ page }) => {
     await startGameWithWeapon(page, 'knife');
+    // Wait for camera to converge (lerp 0.1 takes ~3s to center)
+    await page.waitForTimeout(3000);
     const playerScreen = await page.evaluate(() => {
       // @ts-expect-error
+      game.shake = null; // clear screen shake to avoid random offset
       const cam = game.camera;
       const canvas = document.getElementById('c')!;
-      const dpr = window.devicePixelRatio || 1;
       const s = cam.w2s(game.player.x, game.player.y, canvas);
       const W = window.innerWidth, H = window.innerHeight;
       return { sx: s.x, sy: s.y, cw: W, ch: H };

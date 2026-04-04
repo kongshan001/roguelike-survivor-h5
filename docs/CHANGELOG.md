@@ -2,6 +2,21 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [0.20.0] - 2026-04-04
+
+### Added
+- **波次进度提示系统**：5阶段进度条显示当前游戏阶段+即将出现的新敌人
+  - 进度条(120×4px) + 阶段颜色(绿→黄→橙→红→深红)
+  - 阶段预告文字(提前15秒显示下一波敌人)
+  - 阶段转换toast(新阶段开始时居中提示)
+  - `CFG.WAVE_PROGRESS` 配置驱动（5阶段 + 视觉参数）
+
+### Fixed
+- BUG-003 E2E测试修复：清除屏幕震动+等待相机收敛后再检查玩家位置
+
+### QA
+- E2E 测试 14/14 通过（全绿，无flaky）
+
 ## [0.19.0] - 2026-04-03
 
 ### Added
