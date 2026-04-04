@@ -11,7 +11,7 @@ export class Food {
   update(dt, player, game) {
     this.age += dt;
     if (this.age >= this.lifetime) return false;
-    const d = dist(this, player);
+    let d = dist(this, player);
     const dir = new V(player.x - this.x, player.y - this.y).norm();
     if (d < player.pickupRange) {
       this.x += dir.x * CFG.GEM_FLY_SPEED * dt;
