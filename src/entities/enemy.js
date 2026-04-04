@@ -123,6 +123,7 @@ export class Enemy {
     }
     if (isCrit) dmg *= 2;
     this.hp -= dmg;
+    this._lastCrit = !!isCrit;
     if (isCrit) {
       // Crit float text handled by game layer via callback
       if (this._onCritText) this._onCritText(this.x, this.y - 10, dmg);

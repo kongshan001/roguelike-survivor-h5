@@ -21,6 +21,7 @@ export function showUpgrade(choices, game) {
       card.innerHTML = `<div class="icon">${c.icon}</div><div class="name" style="color:${c.badgeColor}">${c.name}</div><div class="desc">${c.desc}</div><div class="badge" style="background:${c.badgeColor};color:#1a1a2e">${c.badge}</div>`;
       card.onclick = () => {
         c.apply();
+        game.player.checkSynergies();
         panel.style.display = 'none';
         game.paused = false;
       };

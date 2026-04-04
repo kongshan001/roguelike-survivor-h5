@@ -127,5 +127,36 @@ export const CFG = {
     warningTime: 15,
     toastDuration: 2.5,
     barHeight: 4
+  },
+  SYNERGIES: {
+    // 被动+被动
+    crit_boots: { name:'风之锋刃', icon:'🔪', req:{passives:['crit','speedboots']}, desc:'暴击时发射飞刀',
+      onCritKnife:{dmgMul:0.5,speed:250,life:1.0} },
+    armor_maxhp: { name:'铁壁之心', icon:'🛡', req:{passives:['armor','maxhp']}, desc:'护甲效果翻倍',
+      armorDouble:true },
+    magnet_crit: { name:'贪婪之魂', icon:'💎', req:{passives:['magnet','crit']}, desc:'暴击额外掉落宝石',
+      bonusGemValue:2 },
+    boots_regen: { name:'生命奔流', icon:'🏃', req:{passives:['speedboots','regen']}, desc:'移动时再生速度翻倍',
+      movingRegenSpeedMul:2 },
+    armor_regen: { name:'钢铁堡垒', icon:'💪', req:{passives:['armor','regen']}, desc:'低HP时护甲+3',
+      lowHpThreshold:0.3, tempArmorBonus:3 },
+    magnet_maxhp: { name:'命运齿轮', icon:'🔮', req:{passives:['magnet','maxhp']}, desc:'拾取宝石2%回复1HP',
+      gemHealChance:0.02 },
+    // 武器+被动
+    holywater_maxhp: { name:'圣水膨胀', icon:'⛪', req:{weapon:'holywater',passive:'maxhp'}, desc:'圣水球体半径+30%',
+      weaponBonus:{radiusMul:1.3} },
+    knife_crit: { name:'致命飞刀', icon:'🗡', req:{weapon:'knife',passive:'crit'}, desc:'飞刀可暴击',
+      weaponBonus:{canCrit:true} },
+    lightning_magnet: { name:'过载闪电', icon:'⚡', req:{weapon:'lightning',passive:'magnet'}, desc:'闪电链+1，射程+50',
+      weaponBonus:{extraChains:1,rangeBonus:50} },
+    bible_boots: { name:'烈焰圣经', icon:'🔥', req:{weapon:'bible',passive:'speedboots'}, desc:'圣经速度×1.5，范围+20',
+      weaponBonus:{speedMul:1.5,radiusBonus:20} },
+    firestaff_armor: { name:'熔岩法杖', icon:'🌋', req:{weapon:'firestaff',passive:'armor'}, desc:'锥形范围+40px，点燃+1s',
+      weaponBonus:{coneBonus:40,burnDurBonus:1} },
+    frost_regen: { name:'极寒光环', icon:'❄️', req:{weapon:'frostaura',passive:'regen'}, desc:'冰冻概率+5%/s，冰冻+0.5s',
+      weaponBonus:{freezeBonus:0.05,freezeDurBonus:0.5} }
+  },
+  UPGRADE_REROLL: {
+    maxReroll: 1
   }
 };

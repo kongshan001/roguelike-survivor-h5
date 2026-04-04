@@ -15,7 +15,8 @@ export class HolyWater extends Weapon {
   get dmg() { return this.level >= 2 ? 2 : 1.5; }
   update(dt, enemies) {
     this.angle += dt * 3;
-    const r = this.level >= 3 ? 60 : this.radius;
+    const bonus = this.owner.getWeaponBonus ? this.owner.getWeaponBonus('holywater') : {};
+    const r = (this.level >= 3 ? 60 : this.radius) * (bonus.radiusMul || 1);
     for (let i = 0; i < this.count; i++) {
       const a = this.angle + Math.PI * 2 / this.count * i;
       const bx = this.owner.x + Math.cos(a) * r;
@@ -51,6 +52,10 @@ export class Knife extends Weapon {
   get count() { return this.level; }
   get dmg() { return this.level >= 2 ? 2.6 : 2; }
   get pierce() { return this.level >= 3 ? 1 : 0; }
+  get _canCrit() {
+    const bonus = this.owner.getWeaponBonus ? this.owner.getWeaponBonus('knife') : {};
+    return !!bonus.canCrit;
+  }
   update(dt, enemies, bullets, sfx) {
     this.timer -= dt;
     if (this.timer <= 0) {
@@ -91,7 +96,10 @@ export class Lightning extends Weapon {
     }
     if (this.timer <= 0) {
       this.timer = this.cd;
-      const screenEnemies = enemies.filter(e => dist(this.owner, e) < 400);
+      const bonus = this.owner.getWeaponBonus ? this.owner.getWeaponBonus('lightning') : {};
+      const range = 400 + (bonus.rangeBonus || 0);
+      const extraChains = bonus.extraChains || 0;
+      const screenEnemies = enemies.filter(e => dist(this.owner, e) < range);
       for (let b = 0; b < this.bolts && screenEnemies.length > 0; b++) {
         const idx = randInt(0, screenEnemies.length - 1);
         const target = screenEnemies[idx];
@@ -100,7 +108,7 @@ export class Lightning extends Weapon {
         this.effects.push({ x0: this.owner.x, y0: this.owner.y, x1: target.x, y1: target.y, t: 0.2 });
         let prev = target;
         const hit = new Set([target]);
-        for (let c = 0; c < this.chains; c++) {
+        for (let c = 0; c < this.chains + extraChains; c++) {
           let next = null, nd = Infinity;
           for (const e of enemies) {
             if (hit.has(e)) continue;
@@ -143,10 +151,13 @@ export class Bible extends Weapon {
   get dmg() { return this.level >= 3 ? 2 : 1; }
   get speed() { return this.level >= 2 ? 3.6 : 3; }
   update(dt, enemies) {
-    this.angle += dt * this.speed;
+    const bonus = this.owner.getWeaponBonus ? this.owner.getWeaponBonus('bible') : {};
+    const spd = this.speed * (bonus.speedMul || 1);
+    const rad = this.radius + (bonus.radiusBonus || 0);
+    this.angle += dt * spd;
     for (const e of enemies) {
       const d = dist(this.owner, e);
-      if (d < this.radius) {
+      if (d < rad) {
         if (!this.hitTimers.has(e)) this.hitTimers.set(e, 0);
         const ht = this.hitTimers.get(e);
         if (ht <= 0) {
@@ -196,8 +207,10 @@ export class FireStaff extends Weapon {
   get dps() { return this.level >= 3 ? 7 : this.level >= 2 ? 5 : 3; }
   get burnDps() { return this.level >= 3 ? 2 : 0; }
   update(dt, enemies) {
+    const bonus = this.owner.getWeaponBonus ? this.owner.getWeaponBonus('firestaff') : {};
     const angle = this.owner.facingAngle;
-    const range = this.coneRange;
+    const range = this.coneRange + (bonus.coneBonus || 0);
+    const burnDurBonus = bonus.burnDurBonus || 0;
     const halfArc = Math.PI / 6;
     for (const e of enemies) {
       const dx = e.x - this.owner.x, dy = e.y - this.owner.y;
@@ -210,7 +223,7 @@ export class FireStaff extends Weapon {
         if (Math.abs(diff) < halfArc) {
           e.hurt(this.dps * dt);
           if (!e._burn) e._burn = { dmg: 0, t: 0 };
-          if (this.burnDps > 0) { e._burn.dmg = this.burnDps; e._burn.t = 2; }
+          if (this.burnDps > 0) { e._burn.dmg = this.burnDps; e._burn.t = 2 + burnDurBonus; }
         }
       }
     }
@@ -277,14 +290,18 @@ export class FrostAura extends Weapon {
   get freezeDur() { return this.level >= 3 ? 1.5 : 0; }
   update(dt, enemies, sfx) {
     this.pulseTimer += dt;
+    const bonus = this.owner.getWeaponBonus ? this.owner.getWeaponBonus('frostaura') : {};
+    const freezeBonus = bonus.freezeBonus || 0;
+    const freezeDurBonus = bonus.freezeDurBonus || 0;
     for (const e of enemies) {
       const d = dist(this.owner, e);
       if (d < this.radius) {
         e.hurt(this.dps * dt);
         if (!e._slow || e._slow < this.slow) e._slow = this.slow;
         e._slowTimer = 0.5;
-        if (this.freezeChance > 0 && Math.random() < this.freezeChance * dt) {
-          e._frozen = this.freezeDur;
+        const totalFreezeChance = this.freezeChance + freezeBonus;
+        if (totalFreezeChance > 0 && Math.random() < totalFreezeChance * dt) {
+          e._frozen = this.freezeDur + freezeDurBonus;
           if (sfx) sfx('freeze');
         }
       }

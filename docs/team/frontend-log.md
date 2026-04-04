@@ -32,11 +32,49 @@
 | P0 | ~~距离平方比较优化（消除 sqrt，碰撞检测提速30-50%）~~ | **✅ 已验证通过** |
 | P0 | ~~Playwright Workers并行测试~~ | **✅ 已配置** |
 | P0 | ~~AABB 先行判断（减少不必要的精确碰撞计算）~~ | **✅ 已完成 Drive #4** |
+| P0 | ~~协同系统（12种被动+被动/武器+被动协同效果）~~ | **✅ 已完成 Drive #6** |
 
 | P0 | Draw Call 批量绘制（按颜色分组 fillRect） | 待启动 |
 | P1 | 网格空间哈希碰撞检测（敌人>80时启用） | 待启动 |
 | P1 | 固定时间步游戏循环（Timestep Fixing） | 待启动 |
 | P2 | ~~Ban/Reroll升级选项（🔄 换一批按钮，免费重抽1次）~~ | **✅ 已完成 Drive #6** |
+
+---
+
+## 2026-04-04 — Drive #6: 协同系统实现 + Player.js修复
+
+### 成果
+- **协同系统核心**：
+  - `CFG.SYNERGIES` 12种协同配置（6被动+被动，6武器+被动）
+  - `Player.checkSynergies()` 检测当前装备是否满足协同条件
+  - `Player.getWeaponBonus(weaponName)` 返回武器协同加成
+  - `Player.hasSynergy(id)` 查询特定协同激活状态
+  - 升级面板选择后自动调用 `checkSynergies()` 刷新协同
+- **被动+被动协同效果**：
+  - `armor_maxhp`: 护甲效果翻倍 → `Player.takeDamage()`
+  - `armor_regen`: 低HP护甲+3 → `Player.takeDamage()`
+  - `boots_regen`: 移动再生速度翻倍 → `Player.update()`
+  - `crit_boots`: 暴击时发射飞刀 → `game.js` 敌人死亡逻辑
+  - `magnet_crit`: 暴击击杀掉额外宝石 → `game.js` 敌人死亡逻辑
+  - `magnet_maxhp`: 宝石拾取2%回复1HP → `game.js` 宝石拾取逻辑
+- **武器+被动协同加成**：
+  - `holywater_maxhp`: 圣水半径×1.3 → `HolyWater.update()`
+  - `knife_crit`: 飞刀可暴击 → `Knife._canCrit`
+  - `lightning_magnet`: 闪电链+1,射程+50 → `Lightning.update()`
+  - `bible_boots`: 圣经速度×1.5,范围+20 → `Bible.update()`
+  - `firestaff_armor`: 火焰锥形范围+40px,点燃+1s → `FireStaff.update()`
+  - `frost_regen`: 冰冻概率+5%/s,冰冻+0.5s → `FrostAura.update()`
+- **HUD协同显示**：底部居中显示当前激活的协同组合（金色半透明文字）
+- **Bug修复**：`Player.js` 多余 `}` 导致类过早关闭 → `draw()` 及后续方法脱离类定义，JS模块解析失败
+
+### Bug修复详情
+- **Player.js 第229行多余的 `}`**：`hasSynergy()` 方法后多了一个 `}`，导致 `draw()`/`_drawMage()`/`_clampToMap()` 等方法定义在类外部
+  - 表现：`Unexpected token '{'` 解析错误 → 整个 game 模块无法加载 → `window.startGame` undefined → 游戏无法启动
+  - 根因：`node --check` 无法检测此问题（括号数量平衡，但语义错误——方法在类外定义无效）
+  - 修复：移除多余的 `}`，确认类在第299行（文件末尾）正确关闭
+
+### E2E测试
+- 13/14 通过（1 flaky: 经验宝石收集与升级 — 时序相关，非回归）
 
 ---
 

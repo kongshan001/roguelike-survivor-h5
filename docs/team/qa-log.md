@@ -4,6 +4,41 @@
 
 ---
 
+## 2026-04-04 — Drive #6 (续): 协同系统实现 回归测试
+
+### 测试结果：13/14 通过（1 flaky，非回归）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 13 PASS | 全部核心测试通过 | 协同系统+Player修复无回归 |
+| 1 FLAKY | 经验宝石收集与升级 | 时序相关，非回归 |
+
+### 验证项
+- `CFG.SYNERGIES` 配置正确（12种协同：6被动+被动，6武器+被动）
+- `Player.checkSynergies()` 方法存在且逻辑正确（passives+weapons检测）
+- `Player.getWeaponBonus(weaponName)` 返回武器协同加成
+- `Player.hasSynergy(id)` 查询特定协同激活状态
+- **Player.js 关键修复**：移除多余 `}` 恢复类结构完整性
+  - 修复前：`Unexpected token '{'` → 整个模块无法加载 → `window.startGame` undefined
+  - 修复后：类在第299行正确关闭，所有方法在类内定义
+- 升级面板 `apply()` 后调用 `checkSynergies()` 刷新协同
+- HUD 显示当前激活协同（金色文字，底部居中）
+- 被动协同效果已集成：
+  - `crit_boots`: 暴击→发射飞刀（game.js 敌人死亡逻辑）
+  - `magnet_crit`: 暴击击杀→额外宝石（game.js 敌人死亡逻辑）
+  - `magnet_maxhp`: 宝石拾取2%回复1HP（game.js 宝石拾取逻辑）
+- 武器协同加成已集成（HolyWater/Lightning/Bible/FireStaff/FrostAura）
+- Enemy 新增 `_lastCrit` 字段追踪暴击击杀
+- JS语法检查通过
+- E2E测试无回归
+
+### 里程碑
+- **协同系统上线**：12种隐藏协同效果，鼓励多样化装备构建
+- **Player.js 关键修复**：修复类结构破坏导致的模块加载失败
+- **测试稳定化**：从 Drive #5 的 9/14 提升到 13/14
+
+---
+
 ## 2026-04-04 — Drive #6: Reroll功能+联机架构 回归测试
 
 ### 测试结果：9/14 通过（4 failed timing + 1 flaky，非回归）

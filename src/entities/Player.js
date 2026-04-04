@@ -41,6 +41,10 @@ export class Player {
     this._dashDir = { x: 0, y: 0 };
     this._afterimages = [];
 
+    // Synergy system
+    this.activeSynergies = new Set();
+    this._isMoving = false;
+
     // External callbacks (set by game layer)
     this.onSFX = null;        // (id) => void
     this.onScreenShake = null; // (type) => void
@@ -106,7 +110,8 @@ export class Player {
 
     // Normal movement
     const spd = this.speed * (1 + this._speedBoost);
-    if (input.x || input.y) {
+    this._isMoving = !!(input.x || input.y);
+    if (this._isMoving) {
       this.x += input.x * spd * dt;
       this.y += input.y * spd * dt;
       this.facingAngle = Math.atan2(input.y, input.x);
@@ -119,10 +124,13 @@ export class Player {
     // Regen passive
     if (this._regenTimer > 0) {
       this._regenTimer -= dt;
+      // Synergy: boots_regen — moving doubles regen speed
+      let regenSpeedMul = 1;
+      if (this.activeSynergies.has('boots_regen') && this._isMoving) regenSpeedMul = CFG.SYNERGIES.boots_regen.movingRegenSpeedMul;
       if (this._regenTimer <= 0 && this.hp < this.maxHp) {
         this.hp = Math.min(this.hp + 1, this.maxHp);
         const stacks = this.passives.regen || 0;
-        this._regenTimer = [5, 4, 3][stacks - 1] || 3;
+        this._regenTimer = ([5, 4, 3][stacks - 1] || 3) / regenSpeedMul;
       }
     }
 
@@ -153,7 +161,14 @@ export class Player {
     if (this.invTimer > 0 || this._dashing) return false;
     const diffKey = this.getDifficulty ? this.getDifficulty() : 'normal';
     const dMul = CFG.DIFFICULTY[diffKey].enemyDmgMul;
-    const realDmg = Math.max(1, Math.ceil(d * dMul) - this.armor);
+    let armorVal = this.armor;
+    // Synergy: armor_maxhp — armor effect doubled
+    if (this.activeSynergies.has('armor_maxhp')) armorVal *= 2;
+    // Synergy: armor_regen — low HP temp armor bonus
+    if (this.activeSynergies.has('armor_regen') && this.hp / this.maxHp <= CFG.SYNERGIES.armor_regen.lowHpThreshold) {
+      armorVal += CFG.SYNERGIES.armor_regen.tempArmorBonus;
+    }
+    const realDmg = Math.max(1, Math.ceil(d * dMul) - armorVal);
     this.hp -= realDmg;
     this.invTimer = CFG.INVINCIBLE_TIME;
     this._shakeScreen('hurt');
@@ -172,6 +187,44 @@ export class Player {
       return true; // level up
     }
     return false;
+  }
+
+  // ----- Synergy System -----
+  checkSynergies() {
+    this.activeSynergies.clear();
+    if (!CFG.SYNERGIES) return;
+    for (const [id, syn] of Object.entries(CFG.SYNERGIES)) {
+      const req = syn.req;
+      if (req.passives) {
+        // Passive+passive synergy
+        if (req.passives.every(p => (this.passives[p] || 0) > 0)) {
+          this.activeSynergies.add(id);
+        }
+      } else if (req.weapon && req.passive) {
+        // Weapon+passive synergy
+        const hasWeapon = this.weapons.some(w => w.name === req.weapon);
+        const hasPassive = (this.passives[req.passive] || 0) > 0;
+        if (hasWeapon && hasPassive) {
+          this.activeSynergies.add(id);
+        }
+      }
+    }
+  }
+
+  getWeaponBonus(weaponName) {
+    const bonus = {};
+    if (!CFG.SYNERGIES) return bonus;
+    for (const id of this.activeSynergies) {
+      const syn = CFG.SYNERGIES[id];
+      if (syn.weaponBonus && syn.req.weapon === weaponName) {
+        Object.assign(bonus, syn.weaponBonus);
+      }
+    }
+    return bonus;
+  }
+
+  hasSynergy(id) {
+    return this.activeSynergies.has(id);
   }
 
   // ----- Drawing -----

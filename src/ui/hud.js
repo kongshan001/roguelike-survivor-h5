@@ -17,7 +17,16 @@ export function drawHUD(ctx, W, H, dt, game) {
     hpHtml += i < player.hp ? '<span style="color:#ef5350">\u2765</span>' : '<span style="color:#555">\u2764</span>';
   }
   document.getElementById('hud-hp').innerHTML = hpHtml;
-
+  // Active synergies display
+  const syns = player.activeSynergies;
+  if (syns && syns.size > 0) {
+    const synArr = [...syns].map(id => CFG.SYNERGIES[id]);
+    const synText = synArr.map(s => s.icon + s.name).join(' ');
+    ctx.font = '9px monospace';
+    ctx.fillStyle = 'rgba(255,215,0,0.6)';
+    ctx.textAlign = 'center';
+    ctx.fillText(synText.trim(), W / 2, H - 70);
+  }
   // Exp bar
   const nextExp = player.level < CFG.EXP_TABLE.length ? CFG.EXP_TABLE[player.level] : 999;
   document.getElementById('exp-bar').style.width = `${(player.exp / nextExp * 100).toFixed(1)}%`;

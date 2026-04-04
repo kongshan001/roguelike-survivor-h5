@@ -379,6 +379,22 @@ function loop(time) {
         for (let g = 0; g < count; g++) {
           window.game.gems.push(new Gem(e.x + rand(-10, 10), e.y + rand(-10, 10), val / count | 0 || 1));
         }
+        // Synergy: magnet_crit — crit kills drop bonus gem
+        if (e._lastCrit && window.game.player.hasSynergy('magnet_crit')) {
+          const bv = CFG.SYNERGIES.magnet_crit.bonusGemValue;
+          window.game.gems.push(new Gem(e.x + rand(-8, 8), e.y + rand(-8, 8), bv));
+        }
+        // Synergy: crit_boots — crit spawns knife projectile
+        if (e._lastCrit && window.game.player.hasSynergy('crit_boots')) {
+          const kb = CFG.SYNERGIES.crit_boots.onCritKnife;
+          const ang = Math.atan2(e.y - window.game.player.y, e.x - window.game.player.x);
+          window.game.bullets.push({
+            x: window.game.player.x, y: window.game.player.y, w: 6, h: 6,
+            vx: Math.cos(ang) * kb.speed, vy: Math.sin(ang) * kb.speed,
+            dmg: Math.ceil(e.dmg * kb.dmgMul) || 1, life: kb.life,
+            color: '#4fc3f7', hit: new Set()
+          });
+        }
         // Drop food
         if (window.game.foods.length < CFG.FOOD.maxFood) {
           const fDrop = CFG.FOOD.dropRate * CFG.DIFFICULTY[window.game.difficulty].foodDropMul;
@@ -456,6 +472,12 @@ function loop(time) {
             SFX.play('levelup');
             const choices = generateUpgrades(window.game.player);
             if (choices.length > 0) showUpgrade(choices, window.game);
+          }
+          // Synergy: magnet_maxhp — gem pickup 2% chance heal 1HP
+          if (window.game.player.hasSynergy('magnet_maxhp') && Math.random() < CFG.SYNERGIES.magnet_maxhp.gemHealChance) {
+            if (window.game.player.hp < window.game.player.maxHp) {
+              window.game.player.hp = Math.min(window.game.player.hp + 1, window.game.player.maxHp);
+            }
           }
           SFX.play('pickup');
           window.game.gems.splice(i, 1);
