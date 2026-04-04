@@ -119,6 +119,35 @@ H5类吸血鬼幸存者肉鸽游戏，纯Canvas 2D实现，单HTML文件（`inde
 
 ---
 
+### 5. 后端程序 Agent (`backend`)
+
+**职责**：联机架构设计、网络同步、服务器技术选型、持续技术调研
+
+**工作内容**：
+- 联机架构设计（实时同步、状态管理、房间系统）
+- 网络协议设计与优化（WebSocket/WebRTC、序列化、压缩）
+- 服务器技术选型与架构设计
+- 防作弊与安全性设计
+- 后端性能优化与可扩展性设计
+- 持续技术调研（联机技术栈、后端框架、部署方案）
+- 维护 `docs/team/backend-log.md`
+
+**产出物**：
+- 联机架构设计规格书 `docs/superpowers/specs/`
+- 技术调研报告 `docs/team/backend-research.md`
+- 网络协议文档
+- 服务器部署方案
+
+**联机设计原则**：
+- 优先考虑 H5 浏览器兼容性
+- 最小化网络延迟影响（<100ms RTT 目标）
+- 支持断线重连
+- 服务器端关键逻辑验证（防作弊）
+
+**触发规则**：当用户提到"联机"、"后端"、"服务器"、"网络"、"同步"、"multiplayer"时，以后端角色主导。
+
+---
+
 ## 工作流程规范
 
 ### 需求驱动流程
@@ -138,7 +167,10 @@ H5类吸血鬼幸存者肉鸽游戏，纯Canvas 2D实现，单HTML文件（`inde
   │     └─→ 写入 art-log.md
   │
   └─→ QA：验证实现 + 反馈
-        └─→ 写入 qa-log.md → 反馈给策划/前端迭代
+  │     └─→ 写入 qa-log.md → 反馈给策划/前端迭代
+  │
+  └─→ 后端：联机架构 + 技术调研
+        └─→ 写入 backend-log.md + backend-research.md → 联机方案输出给前端
 ```
 
 ### 版本发布流程
@@ -173,7 +205,8 @@ docs/
     ├── designer-log.md                 # 策划工作记录
     ├── frontend-log.md                 # 前端程序工作记录
     ├── art-log.md                      # 美术工作记录
-    └── qa-log.md                       # QA测试工作记录
+    ├── qa-log.md                       # QA测试工作记录
+    └── backend-log.md                  # 后端程序工作记录
 ```
 
 ## 各角色 Log 文件格式规范
@@ -229,6 +262,7 @@ docs/
 - 前端：代码实现（`index.html`）和 `docs/team/frontend-log.md` 更新后推送
 - 美术：视觉规范（`docs/team/art-log.md`）更新后推送
 - QA：测试报告和缺陷记录（`docs/team/qa-log.md`）更新后推送
+- 后端：联机技术方案和调研报告（`docs/team/backend-log.md`、`docs/team/backend-research.md`）更新后推送
 - 版本发布：`docs/VERSION`、`docs/CHANGELOG.md` 更新后推送
 - 所有角色 log 文件更新后均须推送
 
