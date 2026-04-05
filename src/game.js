@@ -501,7 +501,7 @@ function loop(time) {
       if (b.life <= 0 || b.x < 0 || b.x > CFG.MAP_W || b.y < 0 || b.y > CFG.MAP_H) {
         window.game.bullets.splice(i, 1); continue;
       }
-      if (b.color === '#ffd54f' || b.burnDmg) {
+      if (b.color === '#ffd54f' || b.burnDmg || b.frostSlow) {
         for (let j = window.game.enemies.length - 1; j >= 0; j--) {
           const e = window.game.enemies[j];
           if (b.hit && b.hit.has(e)) continue;
@@ -511,6 +511,14 @@ function loop(time) {
               if (!e._burn) e._burn = { dmg: 0, t: 0 };
               e._burn.dmg = b.burnDmg;
               e._burn.t = b.burnDur || 2;
+            }
+            if (b.frostSlow) {
+              if (!e._slow || e._slow < b.frostSlow) e._slow = b.frostSlow;
+              e._slowTimer = b.frostSlowDur;
+              if (b.frostFreezeChance > 0 && Math.random() < b.frostFreezeChance) {
+                e._frozen = b.frostFreezeDur;
+                SFX.play('freeze');
+              }
             }
             if (b.hit) b.hit.add(e);
             if (!b.pierce || b.hit.size > b.pierce) {
@@ -705,6 +713,26 @@ function loop(time) {
       ctx.fillStyle = '#ff9100';
       ctx.fillRect(4, -2.5, 5, 5);
       ctx.fillStyle = '#ffeb3b';
+      ctx.fillRect(7, -1, 3, 2);
+      ctx.restore();
+    } else if (b.color === '#4fc3f7' && b.frostSlow) {
+      // FrostKnife ice blade
+      ctx.save();
+      const angle = Math.atan2(b.vy, b.vx);
+      ctx.translate(s.x, s.y);
+      ctx.rotate(angle);
+      // Ice crystal trail
+      ctx.fillStyle = 'rgba(179,229,252,0.4)';
+      ctx.fillRect(-12, -2, 8, 4);
+      ctx.fillStyle = 'rgba(144,202,249,0.3)';
+      ctx.fillRect(-10, -1, 6, 2);
+      // Blade body
+      ctx.fillStyle = '#4fc3f7';
+      ctx.fillRect(-6, -1.5, 12, 3);
+      ctx.fillStyle = '#81d4fa';
+      ctx.fillRect(4, -2.5, 5, 5);
+      // Ice tip glow
+      ctx.fillStyle = '#e1f5fe';
       ctx.fillRect(7, -1, 3, 2);
       ctx.restore();
     } else {

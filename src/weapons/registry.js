@@ -679,6 +679,167 @@ export class HolyDomain extends Weapon {
   }
 }
 
+// --- FrostKnife (evolved: knife + frostaura) ---
+export class FrostKnife extends Weapon {
+  constructor(owner) { super('frostknife', owner); this.timer = 0; }
+  get maxLevel() { return 1; }
+  get count() { return 5; }
+  get dmg() { return 2.5; }
+  get pierce() { return 2; }
+  get cd() { return 0.6; }
+  get slowAmount() { return 0.4; }
+  get slowDur() { return 1.5; }
+  get freezeChance() { return 0.05; }
+  get freezeDur() { return 1; }
+  update(dt, enemies, bullets, sfx) {
+    this.timer -= dt;
+    if (this.timer <= 0) {
+      this.timer = this.cd;
+      let nearest = null, nd = Infinity;
+      for (const e of enemies) {
+        const d = dist(this.owner, e);
+        if (d < nd) { nd = d; nearest = e; }
+      }
+      if (nearest) {
+        if (sfx) sfx('knife');
+        for (let i = 0; i < this.count; i++) {
+          const dir = new V(nearest.x - this.owner.x, nearest.y - this.owner.y).norm();
+          const spread = i > 0 ? (i % 2 === 1 ? 0.12 : -0.12) * (Math.ceil(i / 2)) : 0;
+          const cos = Math.cos(spread), sin = Math.sin(spread);
+          const dx = dir.x * cos - dir.y * sin;
+          const dy = dir.x * sin + dir.y * cos;
+          if (bullets.length < CFG.MAX_BULLETS) {
+            bullets.push({
+              x: this.owner.x, y: this.owner.y,
+              vx: dx * 260, vy: dy * 260,
+              w: 6, h: 4, dmg: this.applyDmg(this.dmg), life: 1.8,
+              color: '#4fc3f7', pierce: this.pierce, hit: new Set(),
+              frostSlow: this.slowAmount, frostSlowDur: this.slowDur,
+              frostFreezeChance: this.freezeChance, frostFreezeDur: this.freezeDur
+            });
+          }
+        }
+      }
+    }
+  }
+}
+
+// --- FlameBible (evolved: bible + firestaff) ---
+export class FlameBible extends Weapon {
+  constructor(owner) { super('flamebible', owner); this.angle = 0; this.hitTimers = new Map(); this.pulseTimer = 0; this.pulseEffects = []; }
+  get maxLevel() { return 1; }
+  get radius() { return 140; }
+  get speed() { return 4; }
+  get dps() { return 5; }
+  get burnDps() { return 3; }
+  get burnDur() { return 2; }
+  get pulseCD() { return 3; }
+  get pulseDmg() { return 8; }
+  get pulseRadius() { return 100; }
+  update(dt, enemies, sfx) {
+    this.angle += dt * this.speed;
+    // Continuous DPS + burn for enemies within radius
+    for (const e of enemies) {
+      const d = dist(this.owner, e);
+      if (d < this.radius) {
+        if (!this.hitTimers.has(e)) this.hitTimers.set(e, 0);
+        const ht = this.hitTimers.get(e);
+        if (ht <= 0) {
+          e.hurt(this.applyDmg(this.dps));
+          // Apply burn
+          if (!e._burn) e._burn = { dmg: 0, t: 0 };
+          e._burn.dmg = this.applyDmg(this.burnDps);
+          e._burn.t = this.burnDur;
+          this.hitTimers.set(e, 0.3);
+        } else {
+          this.hitTimers.set(e, ht - dt);
+        }
+      }
+    }
+    // Clean up stale hit timers
+    for (const [e] of this.hitTimers) {
+      if (!enemies.includes(e)) this.hitTimers.delete(e);
+    }
+    // Fire pulse every 3 seconds
+    this.pulseTimer -= dt;
+    for (let i = this.pulseEffects.length - 1; i >= 0; i--) {
+      this.pulseEffects[i].t -= dt;
+      if (this.pulseEffects[i].t <= 0) this.pulseEffects.splice(i, 1);
+    }
+    if (this.pulseTimer <= 0) {
+      this.pulseTimer = this.pulseCD;
+      for (const e of enemies) {
+        const d = dist(this.owner, e);
+        if (d < this.pulseRadius) {
+          e.hurt(this.applyDmg(this.pulseDmg));
+          // Pulse also applies burn
+          if (!e._burn) e._burn = { dmg: 0, t: 0 };
+          e._burn.dmg = this.applyDmg(this.burnDps);
+          e._burn.t = this.burnDur;
+        }
+      }
+      this.pulseEffects.push({ x: this.owner.x, y: this.owner.y, t: 0.4, r: this.pulseRadius });
+      if (sfx) sfx('lightning');
+    }
+  }
+  draw(ctx, cam, canvas) {
+    const s = cam.w2s(this.owner.x, this.owner.y, canvas);
+    const r = this.radius;
+    // Rotating flame ring
+    const pulse = Math.sin(this.angle * 2) * 0.15 + 0.5;
+    ctx.strokeStyle = `rgba(255,87,34,${pulse})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI * 2); ctx.stroke();
+    // Inner glow
+    const grad = ctx.createRadialGradient(s.x, s.y, 10, s.x, s.y, r);
+    grad.addColorStop(0, 'rgba(255,152,0,0.15)');
+    grad.addColorStop(0.6, 'rgba(255,87,34,0.08)');
+    grad.addColorStop(1, 'rgba(255,87,34,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI * 2); ctx.fill();
+    // Rotating book pages (4 pages like Bible, but fire-colored)
+    for (let i = 0; i < 4; i++) {
+      const a = this.angle + Math.PI / 2 * i;
+      const cx = s.x + Math.cos(a) * r * 0.6;
+      const cy = s.y + Math.sin(a) * r * 0.6;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(a + Math.PI / 2);
+      ctx.fillStyle = '#ff6d00';
+      ctx.fillRect(-14, -5, 28, 10);
+      ctx.fillStyle = '#ff9100';
+      ctx.fillRect(-14, -5, 28, 2);
+      ctx.fillRect(-14, 3, 28, 2);
+      ctx.fillStyle = '#ffeb3b';
+      ctx.fillRect(-10, -1, 20, 1);
+      ctx.fillRect(-10, 1, 16, 1);
+      ctx.restore();
+    }
+    // Fire particles orbiting
+    for (let i = 0; i < 6; i++) {
+      const a = this.angle * 1.5 + Math.PI * 2 / 6 * i;
+      const pr = r * 0.8;
+      const px = s.x + Math.cos(a) * pr;
+      const py = s.y + Math.sin(a) * pr;
+      ctx.fillStyle = `rgba(255,${Math.floor(rand(100, 200))},0,${0.4 + Math.sin(this.angle * 3 + i) * 0.2})`;
+      ctx.fillRect(px - 2, py - 2, 4, 4);
+      ctx.fillStyle = `rgba(255,235,59,${0.3 + Math.sin(this.angle * 3 + i) * 0.15})`;
+      ctx.fillRect(px - 1, py - 1, 2, 2);
+    }
+    // Fire pulse wave effects
+    for (const p of this.pulseEffects) {
+      const ps = cam.w2s(p.x, p.y, canvas);
+      const alpha = p.t * 2.5;
+      const expandR = p.r * (1.3 - p.t * 0.8);
+      ctx.strokeStyle = `rgba(255,87,34,${alpha})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(ps.x, ps.y, expandR, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = `rgba(255,152,0,${alpha * 0.1})`;
+      ctx.beginPath(); ctx.arc(ps.x, ps.y, expandR, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
 // ===== Weapon Registry =====
 export const WEAPON_CLASSES = {
   holywater: HolyWater,
@@ -691,4 +852,6 @@ export const WEAPON_CLASSES = {
   fireknife: FireKnife,
   holydomain: HolyDomain,
   blizzard: Blizzard,
+  frostknife: FrostKnife,
+  flamebible: FlameBible,
 };

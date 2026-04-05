@@ -38,9 +38,73 @@
 
 | P0 | ~~Draw Call 批量绘制（离屏Canvas精灵缓存）~~ | **✅ 已完成 Drive #11** |
 | P0 | ~~weaponDmgMul集成到所有武器伤害计算~~ | **✅ 已完成 Drive #12** |
+| P1 | ~~进化路线扩展(+2条: 冰霜飞刀+烈焰经文)~~ | **✅ 已完成 Drive #13** |
 | P1 | 网格空间哈希碰撞检测（敌人>80时启用） | 待启动 |
 | P1 | 固定时间步游戏循环（Timestep Fixing） | 待启动 |
 | P2 | ~~Ban/Reroll升级选项（🔄 换一批按钮，免费重抽1次）~~ | **✅ 已完成 Drive #6** |
+
+---
+
+## 2026-04-05 — Drive #13: 进化路线扩展(+2条: 冰霜飞刀 FrostKnife + 烈焰经文 FlameBible)
+
+### 成果
+- **冰霜飞刀 (FrostKnife)** -- knife + frostaura 进化
+  - 5把飞刀同时投掷，速度260px/s，伤害2.5，穿透2次，0.6s间隔
+  - 命中减速40%持续1.5秒
+  - 每刀5%概率冰冻1秒
+  - 视觉：冰蓝色刀身(#4fc3f7) + 白色冰晶尾迹 + 冰蓝尖头发光
+  - 继承飞刀的多方向扇形投掷逻辑（5刀扇形散布）
+- **烈焰经文 (FlameBible)** -- bible + firestaff 进化
+  - 140px旋转半径，4 rad/s旋转速度，5 DPS持续伤害
+  - 范围内敌人持续灼烧（3 DPS持续2秒）
+  - 每3秒释放火焰脉冲波（100px范围，8伤害，附加点燃）
+  - 视觉：橙红色旋转光环 + 火焰书页(4页) + 6个环绕火焰粒子 + 火焰脉冲扩散波纹
+- **CFG 配置扩展** (`src/core/config.js`)
+  - CFG.WEAPONS 新增 frostknife/flamebible 两个条目(evolved:true)
+  - CFG.EVOLUTIONS 新增2条进化配方:
+    - knife + frostaura -> frostknife
+    - bible + firestaff -> flamebible
+- **武器注册** (`src/weapons/registry.js`)
+  - FrostKnife 类：maxLevel=1, 继承 Weapon 基类 applyDmg()
+  - FlameBible 类：maxLevel=1, 独立 hitTimers Map 管理 DPS 频率
+  - WEAPON_CLASSES 注册表新增 frostknife/flamebible 条目
+- **游戏循环集成** (`src/game.js`)
+  - import 新增 FrostKnife/FlameBible 类引用
+  - 武器 update 分发新增 FrostKnife/FlameBible 分支
+  - 子弹命中检测扩展：`b.frostSlow` 属性识别冰霜子弹，命中时应用减速+冰冻
+  - 子弹绘制新增 #4fc3f7 冰霜飞刀刀身渲染（冰蓝刀体+冰晶尾迹+白色冰尖）
+
+### 设计决策
+- **FrostKnife 子弹属性注入**：减速/冰冻效果通过子弹对象的 frostSlow/frostSlowDur/frostFreezeChance/frostFreezeDur 属性传递，在 game.js 命中检测时应用。与 FireKnife 的 burnDmg/burnDur 模式一致，保持子弹特效系统的一致性
+- **FlameBible 独立火焰脉冲**：FlameBible 的脉冲波是独立于 Bible 的范围检测机制，拥有自己的 pulseEffects 数组和 draw() 方法，不依赖外部系统
+- **FlameBible 的 hitTimers**：复用 Bible 的 hitTimers Map 模式管理 0.3s 伤害间隔，但额外叠加灼烧效果（覆盖 enemy._burn）
+- **视觉区分度**：
+  - FrostKnife 冰蓝(#4fc3f7) vs 普通飞刀金色(#ffd54f) vs 火焰飞刀橙色(#ff6d00) -- 三种飞刀视觉清晰区分
+  - FlameBible 橙红火焰光环 vs Bible 金色光环 vs HolyDomain 白色圣光 -- 三种经文系视觉区分明确
+
+### 伤害计算点（applyDmg集成）
+- FrostKnife: 子弹创建时 dmg 字段 (1点)
+- FlameBible: 范围DPS + 灼烧DPS存储 + 脉冲伤害 (3点，共6处 applyDmg 调用)
+
+### 进化配方总览（6条路线）
+| 配方 | 结果 | 机制 |
+|------|------|------|
+| holywater + lightning | 雷暴圣水 | 旋转+链式闪电 |
+| knife + firestaff | 火焰飞刀 | 燃烧穿透飞刀 |
+| bible + holywater | 圣光领域 | 超大范围+圣光脉冲 |
+| frostaura + lightning | 暴风雪 | 大范围暴风雪+闪电链 |
+| knife + frostaura | **冰霜飞刀** | **减速穿透飞刀** |
+| bible + firestaff | **烈焰经文** | **旋转灼烧+火焰脉冲** |
+
+### E2E测试
+- 14/14 全部通过（零回归）
+
+### 变更文件
+| 文件 | 变更 |
+|------|------|
+| `src/core/config.js` | CFG.WEAPONS +2条目, CFG.EVOLUTIONS +2配方 |
+| `src/weapons/registry.js` | +2个武器类(FrostKnife 40行, FlameBible 80行), WEAPON_CLASSES +2注册 |
+| `src/game.js` | +2行 import, +2行 update dispatch, +8行 frostSlow子弹命中逻辑, +14行冰霜飞刀子弹绘制 |
 
 ---
 

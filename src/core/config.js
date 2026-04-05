@@ -25,13 +25,17 @@ export const CFG = {
     blizzard: { name:'暴风雪', icon:'❄️⚡', desc:'大范围暴风雪+闪电链', evolved:true },
     thunderholywater: { name:'雷暴圣水', icon:'⚡💧', desc:'旋转+链式闪电', evolved:true },
     fireknife: { name:'火焰飞刀', icon:'🔥🗡', desc:'燃烧穿透飞刀', evolved:true },
-    holydomain: { name:'圣光领域', icon:'📖💧', desc:'超大范围+圣光脉冲', evolved:true }
+    holydomain: { name:'圣光领域', icon:'📖💧', desc:'超大范围+圣光脉冲', evolved:true },
+    frostknife: { name:'冰霜飞刀', icon:'❄️🗡', desc:'减速穿透飞刀', evolved:true },
+    flamebible: { name:'烈焰经文', icon:'🔥📖', desc:'旋转灼烧+火焰脉冲', evolved:true }
   },
   EVOLUTIONS: [
     { a:'holywater', b:'lightning', result:'thunderholywater', name:'雷暴圣水', icon:'⚡💧', desc:'旋转+链式闪电' },
     { a:'knife', b:'firestaff', result:'fireknife', name:'火焰飞刀', icon:'🔥🗡', desc:'燃烧穿透飞刀' },
     { a:'bible', b:'holywater', result:'holydomain', name:'圣光领域', icon:'📖💧', desc:'超大范围+圣光脉冲' },
-    { a:'frostaura', b:'lightning', result:'blizzard', name:'暴风雪', icon:'❄️⚡', desc:'大范围暴风雪+闪电链' }
+    { a:'frostaura', b:'lightning', result:'blizzard', name:'暴风雪', icon:'❄️⚡', desc:'大范围暴风雪+闪电链' },
+    { a:'knife', b:'frostaura', result:'frostknife', name:'冰霜飞刀', icon:'❄️🗡', desc:'减速穿透飞刀' },
+    { a:'bible', b:'firestaff', result:'flamebible', name:'烈焰经文', icon:'🔥📖', desc:'旋转灼烧+火焰脉冲' }
   ],
   PASSIVES: {
     speedboots: { name:'疾风靴', icon:'👢', desc:'移动速度+15%', maxStack:3 },
