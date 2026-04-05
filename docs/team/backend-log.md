@@ -19,6 +19,92 @@
 
 ---
 
+## 2026-04-06 -- Drive #17: 成就系统对联机架构的影响评估
+
+### 背景
+
+前端 v1.3.0 完成了成就系统实现（尚未提交），涉及以下文件变更：
+
+| 变更项 | 涉及文件 | 具体内容 |
+|--------|---------|---------|
+| 成就面板 UI | 新增 `src/ui/achievement-panel.js` | 纯 UI 模块，读取 CFG.ACHIEVEMENTS 渲染进度 |
+| Save 扩展 | `src/core/save.js` | 新增 achieveFlag()、checkAchievements()、getAchievementProgress() |
+| 游戏统计 | `src/game.js` | endGame() 新增 evolutions/completedQuestsCount/killsAt60 统计 |
+| 杀敌计时 | `src/game.js` loop() | 新增 killsAt60 追踪（前 60s 杀敌数） |
+| 协同触发 | `src/entities/Player.js` | checkSynergies() 新增 achieveFlag('synergy_first') |
+| 场景注册 | `src/ui/scenes.js` | ALL_SCENES 新增 'achievement-panel' |
+
+### 一、对联机架构的影响评估
+
+**结论：无影响。** 成就系统是纯客户端 localStorage 逻辑，不涉及任何网络传输或服务器端状态。
+
+逐项分析：
+
+| 成就系统组件 | 数据存储 | 网络传输 | 联机影响 |
+|-------------|---------|---------|---------|
+| completedAchievements | localStorage | 无 | 各客户端独立追踪，互不干扰 |
+| achievedFlags | localStorage | 无 | 同上 |
+| 成就检查逻辑 | 纯客户端函数 | 无 | Save.checkAchievements() 基于本地 stats 运行 |
+| 灵魂碎片奖励 | localStorage | 无 | 各客户端独立计算 |
+
+### 二、对序列化接口的影响
+
+**PlayerState 快照格式**：无新增字段。成就系统的核心数据（completedAchievements、achievedFlags）存储在 Save（localStorage）中，不属于 Player 运行时状态。序列化接口中的 `gold`、`level`、`weapons` 等字段不受影响。
+
+**ServerSnapshot 格式**：无需修改。成就检查发生在 endGame() 时，使用的是单局游戏统计（kills、elapsed、evolutions 等），这些统计通过事件聚合在本地计算，不需要跨网络同步。
+
+### 三、对服务器端逻辑的影响
+
+**无新增服务器端需求。** 理由：
+
+1. 成就是 PvE 个人追踪，非竞技排名，不需要服务器端验证
+2. 成就奖励（soulFragments）是单机经济资源，联机时各客户端独立拥有
+3. 成就检查函数（Save.checkAchievements）引用 CFG.ACHIEVEMENTS 配置 + 本地统计数据，是纯客户端计算
+4. 如果未来需要"全球成就"或排行榜功能，那是独立的后端服务（独立于联机房间服务器），当前不纳入 MVP 范围
+
+### 四、新增字段的未来考虑
+
+`game.js` 新增了两个运行时字段：
+
+- `evolutions: []` -- 记录本局武器进化历史，用于 condition 类型成就检查
+- `killsAt60: number` -- 前 60s 杀敌数，用于"和平主义者"类成就
+
+这两个字段在联机场景下的处理：
+
+| 字段 | 联机处理方式 | 理由 |
+|------|------------|------|
+| evolutions | 各客户端独立追踪 | 武器进化是玩家个人选择，不需要同步 |
+| killsAt60 | 各客户端独立追踪 | 基于 elapsed < 60 的判断是本地逻辑 |
+
+### 五、Player.js 的 Save 引入
+
+Player.js 新增了 `import { Save } from '../core/save.js'`，在 checkSynergies() 中调用 `Save.achieveFlag('synergy_first')`。
+
+**对联机改造的影响**：RemotePlayer 在联机时不需要调用 Save.achieveFlag()（远程玩家的成就由远程客户端自己追踪）。拆分为 LocalPlayer/RemotePlayer 时，achieveFlag 调用保留在 LocalPlayer 中即可。这是一个需要注意但不是阻塞的点。
+
+### 阻塞状态复查（连续第 5 次）
+
+| 后端产出物 | 状态 | 前端依赖 |
+|-----------|------|---------|
+| 联机技术调研报告 | 完成 | 无 |
+| 联机架构设计规格书 | 完成 | 无 |
+| 网络协议详细规格书 | 完成 | 无 |
+| 联机前置任务清单 | 完成 | 无（已交付前端参考） |
+| Player 拆分方案 | 设计完成 | 前端评审 + 实现 |
+| 可序列化状态接口 | 设计完成 | 前端评审 + 实现 |
+| 服务器 MVP 原型 | 评估完成 | 依赖上述两项前端实现 |
+
+前端当前迭代重心（v1.3.0）：成就系统实现（已完成，待提交）。Player 拆分仍未排入前端迭代计划。
+
+### 决策记录
+
+- 成就系统对联机架构零影响，纯客户端 localStorage 逻辑，无需任何后端适配
+- Player.js 引入 Save 模块需在拆分时注意：achieveFlag 调用保留在 LocalPlayer，RemotePlayer 不需要
+- 后端仍处于设计完成、等待前端实现阶段，无新的高价值后端工作可推进
+- 连续第 5 次阻塞确认，联机前置任务清单（Drive #15 产出）仍然有效，随时可供前端排入计划
+
+---
+
 ## 2026-04-06 -- Drive #16: 节奏平衡调优对联机架构的影响评估
 
 ### 背景
