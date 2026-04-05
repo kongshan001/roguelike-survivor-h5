@@ -17,7 +17,7 @@ import { WEAPON_CLASSES } from './weapons/registry.js';
 import {
   HolyWater, Knife, Lightning, Bible, FireStaff,
   FrostAura, Blizzard, ThunderHolyWater,
-  FireKnife, HolyDomain,
+  FireKnife, HolyDomain, FrostKnife, FlameBible,
 } from './weapons/registry.js';
 import { drawHUD } from './ui/hud.js';
 import { showQuestPanel, hideQuestPanel } from './ui/quest-panel.js';
@@ -38,12 +38,14 @@ let selectedDiff = 'normal';
 window.autoUpgrade = false;
 
 // ===== Canvas resize =====
+let _W = window.innerWidth, _H = window.innerHeight;
 function resize() {
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = window.innerWidth * dpr;
-  canvas.height = window.innerHeight * dpr;
-  canvas.style.width = window.innerWidth + 'px';
-  canvas.style.height = window.innerHeight + 'px';
+  _W = window.innerWidth; _H = window.innerHeight;
+  canvas.width = _W * dpr;
+  canvas.height = _H * dpr;
+  canvas.style.width = _W + 'px';
+  canvas.style.height = _H + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 window.addEventListener('resize', resize);
@@ -489,6 +491,8 @@ function loop(time) {
             else if (w instanceof ThunderHolyWater) w.update(dt, window.game.enemies);
             else if (w instanceof FireKnife) w.update(dt, window.game.enemies, window.game.bullets);
             else if (w instanceof HolyDomain) w.update(dt, window.game.enemies, (id) => SFX.play(id), pCrits);
+            else if (w instanceof FrostKnife) w.update(dt, window.game.enemies, window.game.bullets, (id) => SFX.play(id));
+            else if (w instanceof FlameBible) w.update(dt, window.game.enemies, (id) => SFX.play(id));
     }
     // Update bullets
     for (let i = window.game.bullets.length - 1; i >= 0; i--) {
@@ -525,16 +529,21 @@ function loop(time) {
         }
       }
     }
-    // Gems (use distSq for hot-path comparisons)
+    // Gems (use distSq for hot-path comparisons, no object allocation)
     const PR = window.game.player.pickupRange;
+    const _px = window.game.player.x, _py = window.game.player.y;
+    const PR2 = PR * PR;
     for (let i = window.game.gems.length - 1; i >= 0; i--) {
       const g = window.game.gems[i];
-      let ds = distSq(g, window.game.player);
-      const dir = new V(window.game.player.x - g.x, window.game.player.y - g.y).norm();
-      if (ds < PR * PR) {
-        g.x += dir.x * CFG.GEM_FLY_SPEED * dt;
-        g.y += dir.y * CFG.GEM_FLY_SPEED * dt;
-        ds = distSq(g, window.game.player);
+      let dx = _px - g.x, dy = _py - g.y;
+      let ds = dx * dx + dy * dy;
+      const dInv = ds > 0 ? 1 / Math.sqrt(ds) : 0;
+      const nx = dx * dInv, ny = dy * dInv;
+      if (ds < PR2) {
+        g.x += nx * CFG.GEM_FLY_SPEED * dt;
+        g.y += ny * CFG.GEM_FLY_SPEED * dt;
+        dx = _px - g.x; dy = _py - g.y;
+        ds = dx * dx + dy * dy;
         if (ds < 144) { // 12*12
           const comboBonus = window.game.player.comboExpBonus();
           if (window.game.player.addExp(Math.ceil(g.value * comboBonus))) {
@@ -552,10 +561,9 @@ function loop(time) {
           window.game.gems.splice(i, 1);
         }
       } else {
-        const d = Math.sqrt(ds);
-        const spd = 40 + 60 * (1 - Math.min(d / 1000, 1));
-        g.x += dir.x * spd * dt;
-        g.y += dir.y * spd * dt;
+        const spd = 40 + 60 * (1 - Math.min(ds / 1000000, 1)); // ds/1000² instead of sqrt(ds)/1000
+        g.x += nx * spd * dt;
+        g.y += ny * spd * dt;
       }
     }
     // Foods
@@ -568,7 +576,7 @@ function loop(time) {
   }
 
   // ===== DRAW =====
-  const W = window.innerWidth, H = window.innerHeight;
+  const W = _W, H = _H;
   ctx.fillStyle = '#1a1a2e';
   ctx.fillRect(0, 0, W, H);
 
@@ -580,23 +588,25 @@ function loop(time) {
   const mapX = gs.x, mapY = gs.y, mapW = ge.x - gs.x, mapH = ge.y - gs.y;
   ctx.fillStyle = '#2e7d32';
   ctx.fillRect(mapX, mapY, mapW, mapH);
-  // Grid lines
+  // Grid lines (batched into single path)
   ctx.strokeStyle = 'rgba(0,0,0,0.08)';
   ctx.lineWidth = 0.5;
+  ctx.beginPath();
   const startX = Math.floor((cam.x - W / 2) / gridSize) * gridSize;
   const startY = Math.floor((cam.y - H / 2) / gridSize) * gridSize;
   for (let gx = startX; gx < cam.x + W / 2 + gridSize; gx += gridSize) {
     if (gx >= 0 && gx <= CFG.MAP_W) {
       const s = cam.w2s(gx, 0, canvas);
-      ctx.beginPath(); ctx.moveTo(s.x, 0); ctx.lineTo(s.x, H); ctx.stroke();
+      ctx.moveTo(s.x, 0); ctx.lineTo(s.x, H);
     }
   }
   for (let gy = startY; gy < cam.y + H / 2 + gridSize; gy += gridSize) {
     if (gy >= 0 && gy <= CFG.MAP_H) {
       const s = cam.w2s(0, gy, canvas);
-      ctx.beginPath(); ctx.moveTo(0, s.y); ctx.lineTo(W, s.y); ctx.stroke();
+      ctx.moveTo(0, s.y); ctx.lineTo(W, s.y);
     }
   }
+  ctx.stroke();
   // Map boundary
   ctx.strokeStyle = 'rgba(255,255,255,0.15)';
   ctx.lineWidth = 2;
@@ -612,33 +622,35 @@ function loop(time) {
   // Enemies
   for (const e of window.game.enemies) {
     e.draw(ctx, cam, canvas);
-    // Burn effect overlay
-    if (e._burn && e._burn.t > 0) {
+    // Cache w2s for effects (avoid 3x redundant calls)
+    const _hasFx = (e._burn && e._burn.t > 0) || (e._slow && e._slow > 0) || (e._frozen && e._frozen > 0);
+    if (_hasFx) {
       const bs = cam.w2s(e.x, e.y, canvas);
-      const flicker = Math.sin(Date.now() * 0.015) * 0.2 + 0.5;
-      ctx.fillStyle = `rgba(255,87,34,${flicker})`;
-      ctx.fillRect(bs.x - e.w / 2, bs.y - e.h / 2, e.w, e.h);
-      for (let p = 0; p < 2; p++) {
-        const fx = bs.x + rand(-e.w / 2, e.w / 2);
-        const fy = bs.y - e.h / 2 - rand(2, 8);
-        ctx.fillStyle = `rgba(255,${152 + Math.floor(rand(0, 80))},0,${flicker})`;
-        ctx.fillRect(fx, fy, 2, 3);
+      // Burn effect overlay
+      if (e._burn && e._burn.t > 0) {
+        const flicker = Math.sin(Date.now() * 0.015) * 0.2 + 0.5;
+        ctx.fillStyle = `rgba(255,87,34,${flicker})`;
+        ctx.fillRect(bs.x - e.w / 2, bs.y - e.h / 2, e.w, e.h);
+        for (let p = 0; p < 2; p++) {
+          const fx = bs.x + rand(-e.w / 2, e.w / 2);
+          const fy = bs.y - e.h / 2 - rand(2, 8);
+          ctx.fillStyle = `rgba(255,${152 + Math.floor(rand(0, 80))},0,${flicker})`;
+          ctx.fillRect(fx, fy, 2, 3);
+        }
       }
-    }
-    // Frost slow overlay
-    if (e._slow && e._slow > 0) {
-      const bs = cam.w2s(e.x, e.y, canvas);
-      ctx.fillStyle = 'rgba(144,202,249,0.25)';
-      ctx.fillRect(bs.x - e.w / 2, bs.y - e.h / 2, e.w, e.h);
-    }
-    // Frozen overlay
-    if (e._frozen && e._frozen > 0) {
-      const bs = cam.w2s(e.x, e.y, canvas);
-      ctx.fillStyle = 'rgba(179,229,252,0.5)';
-      ctx.fillRect(bs.x - e.w / 2 - 1, bs.y - e.h / 2 - 1, e.w + 2, e.h + 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.fillRect(bs.x - e.w / 2 - 1, bs.y - e.h / 2 - 2, 3, 2);
-      ctx.fillRect(bs.x + e.w / 2 - 2, bs.y - e.h / 2 - 2, 3, 2);
+      // Frost slow overlay
+      if (e._slow && e._slow > 0) {
+        ctx.fillStyle = 'rgba(144,202,249,0.25)';
+        ctx.fillRect(bs.x - e.w / 2, bs.y - e.h / 2, e.w, e.h);
+      }
+      // Frozen overlay
+      if (e._frozen && e._frozen > 0) {
+        ctx.fillStyle = 'rgba(179,229,252,0.5)';
+        ctx.fillRect(bs.x - e.w / 2 - 1, bs.y - e.h / 2 - 1, e.w + 2, e.h + 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fillRect(bs.x - e.w / 2 - 1, bs.y - e.h / 2 - 2, 3, 2);
+        ctx.fillRect(bs.x + e.w / 2 - 2, bs.y - e.h / 2 - 2, 3, 2);
+      }
     }
   }
   // Dash afterimages
