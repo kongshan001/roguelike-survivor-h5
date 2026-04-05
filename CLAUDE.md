@@ -2,7 +2,11 @@
 
 ## 项目概述
 
-H5类吸血鬼幸存者肉鸽游戏，纯Canvas 2D实现，单HTML文件（`index.html`），零外部依赖，像素风视觉，支持触控和键盘操控。
+H5类吸血鬼幸存者肉鸽游戏，纯Canvas 2D实现，ES Module架构（20个模块），零外部依赖，像素风视觉，支持触控和键盘操控。
+
+**架构设计文档**: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — 包含完整模块依赖图、数据流、系统架构、性能策略。
+
+**架构迭代规则**: 每次涉及模块拆分/新增模块/修改数据流/性能架构调整后，必须同步更新 `docs/ARCHITECTURE.md` 对应章节。
 
 ## Agent 角色定义
 
@@ -190,23 +194,44 @@ H5类吸血鬼幸存者肉鸽游戏，纯Canvas 2D实现，单HTML文件（`inde
 ## 文件结构规范
 
 ```
-index.html                              # 唯一游戏文件
+index.html                              # 唯一HTML入口（UI + CSS + module加载）
 CLAUDE.md                               # 本文件 — 项目规范与Agent定义
+src/
+├── main.js                             # 入口：import game.js
+├── game.js                             # 主循环 + 游戏状态 + 渲染
+├── core/                               # 核心基础设施
+│   ├── config.js                       # CFG常量表
+│   ├── math.js                         # V向量类 + 工具函数
+│   └── save.js                         # localStorage持久化
+├── entities/                           # 游戏实体
+│   ├── Player.js                       # 玩家
+│   ├── enemy.js                        # 敌人（7种 + Boss）
+│   ├── gem.js / food.js / chest.js     # 拾取物
+├── weapons/
+│   └── registry.js                     # 12个武器类（6基础+6进化）
+├── systems/
+│   ├── camera.js                       # DPR感知相机
+│   ├── spawner.js                      # 出兵节奏
+│   └── damage-text.js                  # 伤害数字
+├── audio/
+│   └── sfx.js                          # 音效 + 屏幕震动
+└── ui/
+    ├── input.js / scenes.js / hud.js   # 输入/场景/HUD
+    ├── upgrade-panel.js / upgrade-generate.js  # 升级系统
+    ├── quest-panel.js                  # 挑战任务面板
+    └── shop-panel.js                   # 永久升级商店
 docs/
+├── ARCHITECTURE.md                     # ⭐ 架构设计文档（模块依赖/数据流/性能策略）
 ├── VERSION                             # 版本号（单行）
 ├── CHANGELOG.md                        # 版本变更记录
 ├── superpowers/
 │   ├── specs/                          # 设计规格书
-│   │   └── YYYY-MM-DD-topic-design.md
 │   └── plans/                          # 实现计划
-│       └── YYYY-MM-DD-topic.md
 └── team/
-    ├── README.md                       # 团队协作总览
-    ├── designer-log.md                 # 策划工作记录
-    ├── frontend-log.md                 # 前端程序工作记录
-    ├── art-log.md                      # 美术工作记录
-    ├── qa-log.md                       # QA测试工作记录
-    └── backend-log.md                  # 后端程序工作记录
+    ├── designer-log.md / frontend-log.md / art-log.md / qa-log.md / backend-log.md
+    ├── designer-research.md / frontend-research.md / qa-research.md / backend-research.md
+tests/
+└── smoke.test.ts                       # Playwright E2E测试
 ```
 
 ## 各角色 Log 文件格式规范
