@@ -39,9 +39,63 @@
 | P0 | ~~Draw Call 批量绘制（离屏Canvas精灵缓存）~~ | **✅ 已完成 Drive #11** |
 | P0 | ~~weaponDmgMul集成到所有武器伤害计算~~ | **✅ 已完成 Drive #12** |
 | P1 | ~~进化路线扩展(+2条: 冰霜飞刀+烈焰经文)~~ | **✅ 已完成 Drive #13** |
+| P1 | ~~第8种敌人：分裂虫（本体+分裂子体，死亡分裂机制）~~ | **✅ 已完成 Drive #14** |
 | P1 | 网格空间哈希碰撞检测（敌人>80时启用） | 待启动 |
 | P1 | 固定时间步游戏循环（Timestep Fixing） | 待启动 |
 | P2 | ~~Ban/Reroll升级选项（🔄 换一批按钮，免费重抽1次）~~ | **✅ 已完成 Drive #6** |
+
+---
+
+## 2026-04-05 -- Drive #14: 第8种敌人 -- 分裂虫 (Splitter)
+
+### 成果
+- **分裂虫本体 (splitter)**：16x16, 4HP, 移速50px/s, 伤害1, 青绿色 #00897b
+  - 死亡时分裂为2个小分裂虫（仅分裂1次，通过 `splitter:true && !isChild` 判定）
+  - 宝石价值2, 食物掉落🍖烤肉
+- **小分裂虫 (splitter_small)**：8x8, 1HP, 移速70px/s, 伤害1, 浅青色 #4db6ac
+  - isChild:true 阻止递归分裂
+  - 宝石价值1, 无专属食物掉落（fallback到zombie类型）
+- **生成时机**：180s后以权重1混入生成池，Boss阶段(270s+)权重提升到2（types数组中出现2次'splitter'）
+- **分裂逻辑**：本体死亡时在原位左右偏移12px处创建2个splitter_small实例
+  - 子体继承当前时间+难度的HP/速度乘数（与其他敌人生成逻辑一致）
+  - 受MAX_ENEMIES上限约束
+
+### CFG配置扩展 (`src/core/config.js`)
+- CFG.ENEMY_TYPES 新增 splitter 和 splitter_small 两个条目
+- CFG.FOOD.types 新增 splitter: { icon:'🍖', color:'#8d6e63' }
+
+### 精灵绘制 (`src/entities/enemy.js`)
+- **splitter 分支**（6次fillRect）：青绿色身体 + 深绿色头部甲壳 + 中绿色腹部 + 浅色眼睛 + 深色腿部
+- **splitter_small 分支**（4次fillRect）：浅青色身体 + 浅色内层 + 深色双眼（简化版，体现小体型）
+- Enemy构造函数新增 `this.splitter` 和 `this.isChild` 属性
+
+### 生成池扩展 (`src/systems/spawner.js`)
+- 180-240s: types数组追加 'splitter'（权重1）
+- 240-270s: types数组追加 'splitter'（权重1）
+- 270s+: types数组追加 'splitter', 'splitter'（权重2，出现2次）
+
+### 敌人死亡逻辑 (`src/game.js`)
+- 宝石价值链新增 splitter_small 分支（value=1），splitter本体走默认value=2
+- 分裂逻辑：`e.splitter && !e.isChild` 时生成2个splitter_small，位于 `enemies.splice(i,1)` 之前
+- 分裂出的子体计入击杀总数（每杀1个本体+2个子体=3击杀）
+
+### 设计决策
+- **splitter_small 不走常规生成池**：仅通过本体死亡分裂产生，spawner.js中types数组只有'splitter'
+- **分裂条件双检查**：`e.splitter` 标识可分裂敌人，`!e.isChild` 阻止子体递归分裂
+- **子体继承难度乘数**：分裂时按当前 elapsed 和 difficulty 计算 hpMul/spdMul，与正常敌人生成一致
+- **偏移量12px**：子体在原位左右偏移12px生成，避免完全重叠
+- **权重通过数组重复实现**：270s+阶段types数组中splitter出现2次，自然提高生成概率（与其他类型权重1相比）
+
+### 变更文件
+| 文件 | 变更 |
+|------|------|
+| `src/core/config.js` | ENEMY_TYPES +2条目, FOOD.types +1条目 |
+| `src/systems/spawner.js` | 180s/240s/270s+ 三个阶段types追加splitter |
+| `src/entities/enemy.js` | 构造函数 +2属性, draw() +2精灵分支 |
+| `src/game.js` | 宝石价值链 +1分支, +9行分裂逻辑 |
+
+### 语法检查
+- node --check 4个文件全部通过
 
 ---
 

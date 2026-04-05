@@ -2,6 +2,16 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [1.2.3] - 2026-04-05
+
+### QA
+- Drive #14 回归测试 14/14 全绿（4.6分钟）
+- Splitter敌人实现验证完成（config/enemy/game/spawner四文件变更）
+- CFG.ENDLESS 无尽模式配置定义验证通过（含4个专属Quest，游戏逻辑未实现）
+- 无尽模式设计规格文档输出（docs/superpowers/specs/2026-04-05-endless-mode-design.md）
+- JS 语法检查通过（5个文件括号全平衡）
+- 无新缺陷引入
+
 ## [1.2.2] - 2026-04-05
 
 ### QA

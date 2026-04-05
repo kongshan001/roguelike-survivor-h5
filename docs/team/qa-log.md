@@ -4,6 +4,77 @@
 
 ---
 
+## 2026-04-05 — Drive #14: Splitter敌人 + 无尽模式设计规格 回归测试
+
+### 测试结果：14/14 通过（全绿，耗时 4.6 分钟）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 14 PASS | 全部通过 | Splitter敌人+无尽模式配置无回归 |
+
+### 验证项
+
+- **CFG.ENEMY_TYPES 包含 splitter 和 splitter_small**（config.js 第17-18行）：
+  - `splitter`: w:16, h:16, hp:4, speed:50, dmg:1, color:'#00897b', splitter:true
+  - `splitter_small`: w:8, h:8, hp:1, speed:70, dmg:1, color:'#4db6ac', isChild:true
+  - 两个类型定义完整，属性合理（本体16px/4HP，小体8px/1HP/更快速度70）
+- **生成时机确认**（spawner.js 第6-8行）：
+  - 180-240s: types包含'splitter' -- 确认
+  - 240-270s: types包含'splitter' -- 确认
+  - 270s+: types包含'splitter','splitter' -- 权重翻倍确认
+  - splitter 仅在180s后混入生成池（与180s后期阶段一致）
+- **分裂逻辑确认**（game.js 第479-490行）：
+  - 条件：`e.splitter && !e.isChild` -- 仅本体可分裂，子体不可递归
+  - 分裂数：2个子体（for循环 s<2）
+  - 位置偏移：左右各12px（`(s===0?-1:1)*12`）
+  - 子体类型：`new Enemy('splitter_small', ...)` -- 确认
+  - 子体继承当前时间+难度的 hpMul/spdMul -- 与其他敌人一致
+  - 受 `CFG.MAX_ENEMIES` 约束 -- 确认
+- **isChild 阻止递归分裂**：
+  - config.js: splitter_small 配置 `isChild:true` -- 确认
+  - enemy.js 第22行: `this.isChild = t.isChild || false` -- 确认属性读取
+  - game.js 第480行: `!e.isChild` 检查 -- 确认阻断递归
+- **精灵绘制确认**（enemy.js 第181-190行）：
+  - splitter 分支（6次fillRect）：青绿色身体 + 深绿头部甲壳 + 中绿腹部 + 浅色眼睛 + 深色腿部
+  - splitter_small 分支（4次fillRect）：浅青色身体 + 浅色内层 + 深色双眼（简化版小体）
+  - 两种精灵视觉区分明确（不同色调和细节层次）
+- **Enemy 构造函数扩展**（enemy.js 第21-22行）：
+  - `this.splitter = t.splitter || false` -- 确认
+  - `this.isChild = t.isChild || false` -- 确认
+- **宝石价值链更新**（game.js 第448行）：
+  - splitter_small value=1 -- 确认（分支 `e.type === 'splitter_small' ? 1`）
+  - splitter 本体走默认 value=2 -- 确认
+- **食物掉落配置**（config.js 第59行 splitter: { icon:'🍖', color:'#8d6e63' }）-- 确认
+- **CFG.ENDLESS 配置**（config.js 第197-210行）：
+  - enabled:true, bossInterval:240, bossScalePerCycle:{hpMul:1.5,speedMul:1.1}
+  - extraHpPerMin:0.1, extraSpdPerMin:0.05, minSpawnInterval:0.25
+  - maxEnemyBonus:30, maxEnemiesCap:100, milestoneInterval:60
+  - soulFragmentBonusMul:1.5, goldBonusPerMin:0.5, bossKillReward:{gold:50,exp:30,food:5}
+  - 注意：仅为配置定义，游戏逻辑未实现（纯设计规格输出，无回归风险）
+- **无尽模式专属Quest**（config.js 第191-196行）：
+  - endless_5min/endless_10min/endless_boss3/endless_kill200 共4个任务 -- 确认
+  - check函数含 `s.endless` 条件 -- 确认（不影响标准模式Quest）
+- **无尽模式设计规格文档** -- docs/superpowers/specs/2026-04-05-endless-mode-design.md 存在 -- 确认
+- **JS 语法检查通过**（5个文件括号全平衡）：
+  - config.js: {0} (0) [0] OK
+  - enemy.js: {0} (0) [0] OK
+  - spawner.js: {0} (0) [0] OK
+  - game.js: {0} (0) [0] OK
+  - main.js: {0} (0) [0] OK
+- E2E 测试 14/14 全绿
+
+### 新增缺陷
+
+无新缺陷引入。
+
+### 里程碑
+
+- **Splitter敌人验证完成**：第8种敌人上线，分裂机制（本体死亡->2个子体）工作正常
+- **无尽模式设计规格输出**：CFG.ENDLESS配置+4个Quest定义，游戏逻辑待后续Drive实现
+- **连续2个Drive零回归**：Drive #13 和 Drive #14 均为14/14全绿
+
+---
+
 ## 2026-04-05 — Drive #13: 第8种敌人 Splitter 回归测试
 
 ### 测试结果：14/14 通过（全绿，耗时 4.8 分钟）

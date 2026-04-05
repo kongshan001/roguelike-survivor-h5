@@ -122,6 +122,7 @@ window.startGame = startGame;
 
 window.pickDiff = function pickDiff(diff) {
   selectedDiff = diff;
+  let isEndless = diff === 'endless';
   if (selectedChar._autoWeapon) {
     beginGame(selectedChar._autoWeapon);
   } else {
@@ -444,7 +445,7 @@ function loop(time) {
         SFX.play('kill');
         window.game.dmgTexts.push({ x: e.x, y: e.y - 10, text: '💀', life: 0.8 });
         // Drop gems
-        const val = e.isBoss ? 50 : (e.type === 'skeleton' ? 3 : e.type === 'ghost' ? 2 : e.type === 'bat' ? 1 : e.type === 'elite_skeleton' ? 5 : 2);
+        const val = e.isBoss ? 50 : (e.type === 'skeleton' ? 3 : e.type === 'ghost' ? 2 : e.type === 'bat' ? 1 : e.type === 'elite_skeleton' ? 5 : e.type === 'splitter_small' ? 1 : 2);
         const count = e.isBoss ? 8 : 1;
         for (let g = 0; g < count; g++) {
           window.game.gems.push(new Gem(e.x + rand(-10, 10), e.y + rand(-10, 10), val / count | 0 || 1));
@@ -475,6 +476,18 @@ function loop(time) {
           }
         }
         if (e.isBoss && window.game.elapsed >= 270) { window.game.bossKilled = true; endGame(true); return; }
+        // Splitter: split into 2 small splitters on death
+        if (e.splitter && !e.isChild && window.game.enemies.length < CFG.MAX_ENEMIES) {
+          const minutes = window.game.elapsed / 60;
+          const dc = CFG.DIFFICULTY[window.game.difficulty];
+          const hpMul = (1 + minutes * 0.2) * dc.enemyHpMul;
+          const spdMul = (1 + minutes * 0.1) * dc.enemySpeedMul;
+          for (let s = 0; s < 2 && window.game.enemies.length < CFG.MAX_ENEMIES; s++) {
+            const offset = (s === 0 ? -1 : 1) * 12;
+            const child = new Enemy('splitter_small', e.x + offset, e.y, hpMul, spdMul);
+            window.game.enemies.push(child);
+          }
+        }
         window.game.enemies.splice(i, 1);
       }
     }

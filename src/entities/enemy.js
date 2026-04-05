@@ -18,6 +18,8 @@ export class Enemy {
     this.phaseShift = t.phaseShift || false; this.teleport = t.teleport || false;
     this.phShiftTimer = 0; this.phShiftActive = false;
     this.hasTeleported = false; this.teleportCD = 0;
+    this.splitter = t.splitter || false;
+    this.isChild = t.isChild || false;
   }
   update(dt, player, bullets) {
     if (this.hitCD > 0) this.hitCD -= dt;
@@ -176,6 +178,16 @@ export class Enemy {
       ctx.fillStyle = '#90a4ae';
       ctx.fillRect(x + 1, y + this.h, 3, 3); ctx.fillRect(x + 8, y + this.h, 3, 3);
       ctx.globalAlpha = 1;
+    } else if (this.type === 'splitter') {
+      ctx.fillStyle = '#00897b'; ctx.fillRect(x, y, this.w, this.h);
+      ctx.fillStyle = '#004d40'; ctx.fillRect(x + 2, y + 2, 5, 5); ctx.fillRect(x + 9, y + 2, 5, 5);
+      ctx.fillStyle = '#00695c'; ctx.fillRect(x + 1, y + 9, 14, 4);
+      ctx.fillStyle = '#b2dfdb'; ctx.fillRect(x + 3, y + 3, 2, 2); ctx.fillRect(x + 11, y + 3, 2, 2);
+      ctx.fillStyle = '#004d40'; ctx.fillRect(x + 5, y + 10, 3, 2); ctx.fillRect(x + 10, y + 10, 3, 2);
+    } else if (this.type === 'splitter_small') {
+      ctx.fillStyle = '#4db6ac'; ctx.fillRect(x, y, this.w, this.h);
+      ctx.fillStyle = '#80cbc4'; ctx.fillRect(x + 1, y + 1, this.w - 2, this.h - 2);
+      ctx.fillStyle = '#004d40'; ctx.fillRect(x + 2, y + 2, 2, 2); ctx.fillRect(x + 5, y + 2, 2, 2);
     } else if (this.type === 'boss') {
       let bodyColor, innerColor, wingColor, eyeColor, hornColor;
       if (this.phase === 3) {

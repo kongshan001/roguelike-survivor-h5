@@ -13,7 +13,9 @@ export const CFG = {
     skeleton: { w:14, h:14, hp:5, speed:20, dmg:1, color:'#e0e0e0', ranged:true, shootCD:2 },
     elite_skeleton: { w:18, h:18, hp:12, speed:15, dmg:2, color:'#b71c1c', ranged:true, shootCD:1.2, elite:true },
     boss:     { w:32, h:32, hp:200, speed:30, dmg:2, color:'#f44336', isBoss:true },
-    ghost:    { w:12, h:12, hp:2, speed:55, dmg:1, color:'#b0bec5', phaseShift:true, teleport:true }
+    ghost:    { w:12, h:12, hp:2, speed:55, dmg:1, color:'#b0bec5', phaseShift:true, teleport:true },
+    splitter: { w:16, h:16, hp:4, speed:50, dmg:1, color:'#00897b', splitter:true },
+    splitter_small: { w:8, h:8, hp:1, speed:70, dmg:1, color:'#4db6ac', isChild:true }
   },
   WEAPONS: {
     holywater: { name:'圣水', icon:'💧', desc:'环绕旋转' },
@@ -53,7 +55,8 @@ export const CFG = {
       skeleton: { icon:'🧀', color:'#ffd54f' },
       boss:     { icon:'🍖', color:'#8d6e63' },
       ghost:    { icon:'🍞', color:'#e0e0e0' },
-      elite_skeleton: { icon:'🧀', color:'#ffd54f' }
+      elite_skeleton: { icon:'🧀', color:'#ffd54f' },
+      splitter: { icon:'🍖', color:'#8d6e63' }
     }
   },
   CHEST: {
@@ -185,5 +188,24 @@ export const CFG = {
     { id:'no_damage',   name:'完美闪避', icon:'✨',desc:'不受伤存活1分钟',   check:s=>s.elapsed>=60&&s.damageTaken===0, reward:120 },
     { id:'combo_20',    name:'连击大师', icon:'🔥',desc:'达成20连击',       check:s=>s.bestCombo>=20, reward:100 },
     { id:'combo_50',    name:'连击之王', icon:'💥',desc:'达成50连击',       check:s=>s.bestCombo>=50, reward:200 },
-  ]
+    // Endless mode quests
+    { id:'endless_5min',  name:'无尽征途', icon:'♾', desc:'无尽模式存活5分钟',    check:s=>s.endless&&s.elapsed>=300, reward:150 },
+    { id:'endless_10min', name:'不朽传说', icon:'⏱', desc:'无尽模式存活10分钟',   check:s=>s.endless&&s.elapsed>=600, reward:300 },
+    { id:'endless_boss3', name:'连斩三龙', icon:'🐲', desc:'单局无尽击杀3个Boss',  check:s=>s.endless&&s.bossKillCount>=3, reward:400 },
+    { id:'endless_kill200',name:'无尽屠戮', icon:'💀', desc:'单局无尽击杀200敌人', check:s=>s.endless&&s.kills>=200, reward:250 },
+  ],
+  ENDLESS: {
+    enabled: true,
+    bossInterval: 240,
+    bossScalePerCycle: { hpMul: 1.5, speedMul: 1.1 },
+    extraHpPerMin: 0.1,
+    extraSpdPerMin: 0.05,
+    minSpawnInterval: 0.25,
+    maxEnemyBonus: 30,
+    maxEnemiesCap: 100,
+    milestoneInterval: 60,
+    soulFragmentBonusMul: 1.5,
+    goldBonusPerMin: 0.5,
+    bossKillReward: { gold: 50, exp: 30, food: 5 },
+  }
 };
