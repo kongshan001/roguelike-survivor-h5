@@ -12,12 +12,131 @@
 | P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | ✅ 设计规格书完成 |
 | P1 | 网络协议详细规格书（消息定义/快照格式/断线重连） | ✅ Drive #11 完成 |
 | P1 | 联机前置任务清单（前端 1 页精简清单） | ✅ Drive #15 已输出 |
-| P1 | 序列化接口规格书（需更新：Boomerang/Thunderang/Blazerang 投射物+特效） | ⚠️ Drive #21 评估完成，Drive #20 方案需扩展 |
+| P1 | 序列化接口规格书（需更新：Boomerang/Thunderang/Blazerang 投射物+特效） | ⚠️ Drive #22 确认：Weapon基类重构对序列化无影响，待前端实现 |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，待前端实现 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | ⏳ 已评估，阻塞于 P1 前端实现 |
 | P2 | Docker 容器化部署方案 | 待评估（低优先级） |
 
 ---
+
+## 2026-04-06 -- Drive #22: v1.6.0 Weapon 基类重构对序列化的影响评估
+
+### 背景
+
+前端提交 `ae95c59` 完成了 Weapon 基类重构：将 `findNearestEnemy()` 方法从各武器类的局部实现提取到 `Weapon` 基类。同时 v1.6.0 包含 Thunderang 和 Blazerang 进化武器的完整实现。
+
+当前 Weapon 类继承关系：
+
+```
+Weapon (基类)
+  + findNearestEnemy(enemies, fromX, fromY, maxDist)  -- 新提取到基类
+  + applyDmg(base)                                      -- 基类方法
+  ├── HolyWater
+  ├── Knife / FireKnife / FrostKnife
+  ├── Lightning
+  ├── Bible / FlameBible
+  ├── FireStaff
+  ├── FrostAura
+  ├── Boomerang (override findNearestEnemy -- 冗余重复)
+  ├── Thunderang (继承基类 findNearestEnemy)
+  └── Blazerang (继承基类 findNearestEnemy)
+```
+
+### 一、Weapon 基类重构对序列化的影响
+
+**结论：无影响。** `findNearestEnemy()` 提取是纯代码组织重构，不改变任何运行时状态或序列化字段。
+
+逐项分析：
+
+| 变更项 | 影响 | 说明 |
+|--------|------|------|
+| `findNearestEnemy` 移至基类 | 无 | 纯方法位置变更，不涉及实例数据 |
+| Boomerang 冗余 override | 无 | 代码重复但逻辑一致，不影响序列化 |
+| WeaponSnap 格式 | 无变化 | `WeaponSnap { name, level, timer }` 不含方法引用 |
+
+序列化规格书（`2026-04-05-serialization-interface-spec.md`）中定义的 `WeaponSnap` 接口：
+
+```typescript
+interface WeaponSnap {
+  name: string;    // "holywater" | "knife" | ... | "blazerang"
+  level: number;   // 1-3 (进化武器为 1)
+  timer: number;   // 武器内部计时器 (2位小数)
+}
+```
+
+此接口仅捕获实例数据字段（name, level, timer），不涉及任何方法。`findNearestEnemy`、`applyDmg`、`getLevelData` 等方法都是逻辑函数，不属于序列化范围。重构前后 `WeaponSnap` 的输出完全一致。
+
+### 二、序列化规格书当前状态验证
+
+对照 v1.6.0 代码库验证序列化规格书的准确性：
+
+| 规格书字段 | Player.js 代码 | 是否匹配 |
+|-----------|---------------|---------|
+| `charId` | `this.charId = charId` (L31) | 匹配 |
+| `damageTaken` (->_damageTaken) | `this._damageTaken = 0` (L50) | 匹配 |
+| `weapons[]` | `this.weapons = []` (L23) | 匹配 |
+| `passives` | `this.passives = {}` (L24) | 匹配 |
+| `activeSynergies` | `this.activeSynergies = new Set()` (L46) | 匹配 |
+| `dashing` (->_dashing) | `this._dashing = false` (L40) | 匹配 |
+| `dashCD` (->_dashCD) | `this._dashCD = 0` (L39) | 匹配 |
+| `combo` (->_combo) | `this._combo = 0` (L34) | 匹配 |
+| `invTimer` | `this.invTimer = 0` (L20) | 匹配 |
+| `speedBoost` (->_speedBoost) | `this._speedBoost = 0` (L29) | 匹配 |
+| `speedBoostTimer` (->_speedBoostTimer) | `this._speedBoostTimer = 0` (L30) | 匹配 |
+
+v1.6.0 Player 构造函数无新增字段，与 Drive #19 规格书完全对齐。
+
+### 三、v1.6.0 其他变更的联机影响
+
+v1.6.0 除 Weapon 基类重构外，主要变更集中在武器进化实现（Thunderang/Blazerang）。这些变更的联机影响已在 Drive #21 中完整评估：
+
+- Thunderang: `effects[]` 纯视觉，不序列化
+- Blazerang: `trails[]` 影响游戏逻辑，推荐联机后由服务器端快照包含
+- 三种回旋镖共用统一 `BoomerangSnap` 格式
+
+v1.6.0 无新增联机影响项。
+
+### 四、Weapon 基类对服务器端的复用意义
+
+`findNearestEnemy()` 提取到基类虽然不影响序列化格式，但对服务器端代码复用有正面意义：
+
+1. 服务器端需要运行武器逻辑（半授权模型中的授权计算），`findNearestEnemy()` 是武器寻敌的核心函数
+2. 提取到基类后，服务器端 import `Weapon` 基类即可复用寻敌逻辑，无需为每个武器类型重复实现
+3. 服务器端可进一步将 `findNearestEnemy` 优化为空间哈希查找（当前是 O(n) 线性扫描），只需改基类方法
+
+**遗留问题**：Boomerang 类在第 862 行冗余覆盖了 `findNearestEnemy`，与基类实现完全相同。这是前端重构不完全的痕迹（可能遗漏删除）。不影响功能，但建议前端后续清理。
+
+### 五、阻塞状态复查（连续第 10 次）
+
+| 后端产出物 | 状态 | 前端依赖 |
+|-----------|------|---------|
+| 联机技术调研报告 | 完成 | 无 |
+| 联机架构设计规格书 | 完成 | 无 |
+| 网络协议详细规格书 | 完成 | 无 |
+| 联机前置任务清单 | 完成 | 无（已交付前端参考） |
+| 序列化接口规格书 | 完成（Drive #19），Boomerang 系列影响已评估（Drive #20-21），v1.6.0 验证无变化（Drive #22） | 前端评审 + 实现 |
+| Player 拆分方案 | 设计完成 | 前端评审 + 实现 |
+| 服务器 MVP 原型 | 评估完成 | 依赖上述两项前端实现 |
+
+前端当前版本 v1.6.0，本轮完成了 Weapon 基类 `findNearestEnemy` 提取 + Thunderang/Blazerang 进化武器实现。Player 拆分仍未排入前端迭代计划。
+
+### 六、下一步优先级建议
+
+| 方向 | 价值 | 紧急度 | 建议 |
+|------|------|--------|------|
+| 等待前端排入 Player 拆分 | 高 | 取决于前端 | 持续关注 |
+| 服务器 MVP 原型编码 | 高 | 被阻塞 | 前端完成后启动 |
+| 序列化规格书更新（BoomerangSnap weapon 字段） | 中 | 低 | Drive #20-21 方案已记录，等前端实现时合并 |
+| 新技术调研 | 低 | 低 | 技术栈已确定，无重大行业变化 |
+| Docker 部署方案 | 低 | 低 | MVP 阶段本地开发即可 |
+
+### 决策记录
+
+- `findNearestEnemy()` 提取到 Weapon 基类是纯代码组织重构，不涉及序列化接口变更
+- v1.6.0 Player 构造函数无新增字段，序列化规格书（Drive #19）仍然完全有效
+- Boomerang 类存在冗余的 `findNearestEnemy` 覆盖（与基类实现完全相同），建议前端清理
+- Weapon 基类对服务器端复用有正面意义，服务器端可直接 import 基类复用寻敌逻辑
+- 连续第 10 次阻塞确认。后端设计产出物已完备，等待前端排入 Player 拆分和序列化实现
 
 ## 2026-04-06 -- Drive #21: Thunderang/Blazerang 进化武器对联机序列化的影响评估
 
