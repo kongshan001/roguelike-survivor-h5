@@ -12,12 +12,205 @@
 | P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | ✅ 设计规格书完成 |
 | P1 | 网络协议详细规格书（消息定义/快照格式/断线重连） | ✅ Drive #11 完成 |
 | P1 | 联机前置任务清单（前端 1 页精简清单） | ✅ Drive #15 已输出 |
-| P1 | 序列化接口规格书（需更新：Boomerang/Thunderang/Blazerang 投射物+特效） | ⚠️ Drive #22 确认：Weapon基类重构对序列化无影响，待前端实现 |
+| P1 | 序列化接口规格书（需更新：critDmgBonus/goldDropBonus + 6新协同） | ⚠️ Drive #23 确认：PlayerSnap 新增2字段，待前端实现 |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，待前端实现 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | ⏳ 已评估，阻塞于 P1 前端实现 |
 | P2 | Docker 容器化部署方案 | 待评估（低优先级） |
 
 ---
+
+## 2026-04-06 -- Drive #23: v1.6.1 幸运硬币被动 + 6个新协同对联机的影响评估
+
+### 背景
+
+v1.6.1 前端完成了以下变更：
+
+1. **幸运硬币被动道具**（第 7 种被动）：`critDmgBonus` +50%, `goldDropBonus` +15%，可叠加 3 层
+2. **6 个新协同**（12 -> 18 种）：
+   - 幸运硬币协同 4 种：crit_luckycoin, holywater_luckycoin, firestaff_luckycoin, frostaura_luckycoin
+   - 回旋镖协同 2 种：boomerang_magnet, boomerang_crit
+
+涉及文件变更：
+
+| 变更项 | 涉及文件 | 具体内容 |
+|--------|---------|---------|
+| Player 新增字段 | `src/entities/Player.js` | `this.critDmgBonus = 0`, `this.goldDropBonus = 0` (L49-50) |
+| 暴击伤害公式变更 | `src/entities/enemy.js` | `dmg *= 2 + (game.player.critDmgBonus \|\| 0)` (L126) |
+| 金币计算逻辑变更 | `src/game.js` | goldMul 含 goldDropBonus, 协同判断含 crit_luckycoin 等 (L312, L471-512) |
+| 被动道具注册 | `src/ui/upgrade-generate.js` | luckycoin 应用逻辑 (L43) |
+| 协同配置 | `src/core/config.js` | SYNERGIES 新增 6 条 (L176-189) |
+| 被动数值 | `src/core/config.js` | PASSIVES.luckycoin 配置 (L58-59) |
+
+### 一、Player 新增字段对序列化接口的影响
+
+Player 构造函数新增 2 个字段：
+
+```js
+this.critDmgBonus = 0;    // L49
+this.goldDropBonus = 0;   // L50
+```
+
+**序列化接口规格书影响**：`PlayerSnap` 需新增 2 个可选字段。
+
+```typescript
+interface PlayerSnap {
+  // ... 现有字段 ...
+  critDmgBonus?: number;    // 暴击伤害加成 (0-1.5, 叠加3层 x 0.5)
+  goldDropBonus?: number;   // 金币掉落加成 (0-0.45, 叠加3层 x 0.15)
+}
+```
+
+**快照大小影响**：2 个额外字段约增加 20B/玩家，可忽略。
+
+**现有 snapshot() 函数的 playerState() 需追加**：
+
+```js
+// 在 passives 后追加
+if (p.critDmgBonus) snap.critDmgBonus = Math.round(p.critDmgBonus * 100) / 100;
+if (p.goldDropBonus) snap.goldDropBonus = Math.round(p.goldDropBonus * 100) / 100;
+```
+
+采用可选字段（仅在有值时包含），与 Drive #19 设计的"可选字段省略"策略一致。
+
+### 二、暴击伤害公式对服务器端逻辑复现的影响
+
+enemy.js L126 的暴击伤害公式：
+
+```js
+if (isCrit) dmg *= 2 + (window.game ? window.game.player.critDmgBonus || 0);
+```
+
+原公式是 `dmg *= 2`（固定 2 倍暴击），现在变为 `dmg *= (2 + critDmgBonus)`。
+
+**影响评估**：
+
+| 维度 | 分析 |
+|------|------|
+| 服务器端复现 | 服务器端需 import 同一份 `config.js` 获取 PASSIVES.luckycoin.critDmgBonus，在伤害计算中应用相同公式 |
+| 确定性 | 公式为纯算术运算（无随机、无副作用），服务器端可精确复现 |
+| 防作弊 | 暴击伤害加成由被动道具堆叠数决定，道具获取由升级选择驱动，服务器端验证升级选择后自动得到正确值 |
+| 代码复用 | 建议未来将 `hurt()` 中的暴击公式提取为共享函数 `calcCritDamage(baseDmg, critDmgBonus)`，前端和服务器端共用 |
+
+### 三、金币计算逻辑变更的影响
+
+game.js L471-479 的金币计算链路：
+
+```js
+const goldFromGem = CFG.GOLD.gemToGold ? gemVal : 0;
+const goldMul = 1 + (window.game.player.goldDropBonus || 0);
+let goldEarned = CFG.GOLD.perKill + comboGold + Math.ceil(goldFromGem * goldMul);
+if (e._lastCrit && window.game.player.hasSynergy('crit_luckycoin')) {
+  goldEarned *= 2;
+}
+window.game.player.gold += goldEarned;
+```
+
+**新增因素**：
+
+| 因素 | 来源 | 服务器端处理 |
+|------|------|------------|
+| `goldDropBonus` | 幸运硬币被动 | 从 Player 的 passives 计算，确定性 |
+| `crit_luckycoin` 协同 | 被动组合激活 | checkSynergies() 纯逻辑，服务器端可复现 |
+| `holywater_luckycoin` 协同 | 武器击杀判断 | 需服务器端判定击杀来源武器 |
+| `gemValExtra` (firestaff_luckycoin) | 燃烧状态 + 协同 | 服务器端需追踪 enemy._burn 状态 |
+
+**关键发现**：`holywater_luckycoin` 的判定依赖"圣水是否为击杀武器"（L508: `player.weapons.some(w => w.name === 'holywater'...)`)，但实际代码中并未检查"本击杀是否来自圣水"，而是检查"玩家是否拥有圣水"。这意味着只要激活了 holywater_luckycoin 协同（拥有圣水 + 拥有幸运硬币），**任何击杀都会触发额外金币**，不仅限于圣水造成的击杀。这是一个前端逻辑问题（可能是有意设计），对联机无额外影响，但服务器端复现时需按同样逻辑实现。
+
+**金币计算复杂度趋势**：金币计算链路从 Drive #16 的 `CFG.GOLD.perKill + comboGold` 增长到包含 3 个协同条件分支。服务器端复现时需按相同顺序执行所有条件。建议未来将金币计算提取为独立函数 `calcKillGold(player, enemy)`。
+
+### 四、协同系统扩展（12 -> 18 种）对网络同步的影响
+
+#### 4.1 activeSynergies 序列化
+
+当前序列化规格书中，`activeSynergies: Set<string>` 序列化为 `string[]`：
+
+```typescript
+activeSynergies: string[];  // e.g. ['crit_boots', 'knife_crit', ...]
+```
+
+从 12 种扩展到 18 种后，`activeSynergies` 数组最大长度从理论 12 增加到理论 18（实际受道具组合约束，单局激活 3-6 个协同）。额外 6 个字符串标识符约增加 60-90B，可忽略。
+
+#### 4.2 协同效果对服务器端的影响
+
+| 新协同 | 效果类型 | 服务器端复现复杂度 | 说明 |
+|--------|---------|-------------------|------|
+| crit_luckycoin | 金币翻倍 | 低 | 纯数值乘法 |
+| holywater_luckycoin | 击杀额外金币 | 低 | 检查武器持有 + 加固定值 |
+| firestaff_luckycoin | 燃烧敌人宝石价值+1 | 低 | 检查 enemy._burn 状态 |
+| frostaura_luckycoin | 冰冻敌人宝石吸引+30px | 低 | 宝石 _fromFrozen 标记 + 拾取范围加成 |
+| boomerang_magnet | 回旋镖飞行路径吸引宝石 | 中 | 需在武器 update 循环中处理宝石吸引力 |
+| boomerang_crit | 回旋镖可暴击 + 暴击体积/穿透加成 | 中 | 需在武器寻敌/碰撞逻辑中应用暴击判定 |
+
+**复杂度分析**：
+
+- 4 个 luckycoin 协同均为数值加成（金币/宝石价值/拾取范围），服务器端复现为简单的条件判断 + 数值运算
+- 2 个 boomerang 协同涉及武器行为变更（吸引宝石、暴击判定），服务器端需在武器逻辑中增加相应分支
+- 所有协同效果的触发条件（passives 组合、武器持有）均为确定性状态检查，无随机因素
+
+#### 4.3 对 `getWeaponBonus()` 的影响
+
+Player.js 的 `getWeaponBonus()` 方法遍历 activeSynergies 返回武器加成对象。新增的 6 个协同中，4 个定义了 `weaponBonus`：
+
+```js
+holywater_luckycoin: { weaponBonus:{ killGoldBonus:1 } }
+firestaff_luckycoin: { weaponBonus:{ burnGemBonus:1 } }
+frostaura_luckycoin: { weaponBonus:{ frozenGemPullBonus:30 } }
+boomerang_crit: { weaponBonus:{ canCrit:true, critSizeBonus:1.2, critPierceBonus:1 } }
+```
+
+服务器端复现 `getWeaponBonus()` 时需同步更新支持的 bonus 字段列表。当前 `weaponBonus` 的字段类型总计约 15 种（radiusMul, canCrit, extraChains, speedMul 等），新增 4 种（killGoldBonus, burnGemBonus, frozenGemPullBonus, critSizeBonus/critPierceBonus）。
+
+### 五、新增被动道具对序列化接口的影响
+
+`passives` 字段当前格式为 `Record<string, number>`（被动名 -> 堆叠数）。新增 `luckycoin` 后：
+
+```typescript
+passives: Record<string, number>;  // e.g. { crit: 2, armor: 1, luckycoin: 3 }
+```
+
+`passives` 是开放式字典结构，新增 key 不影响序列化格式。快照大小增加约 15B（key + value），可忽略。
+
+### 六、整体快照大小更新
+
+| 变更项 | 额外大小 | 说明 |
+|--------|---------|------|
+| PlayerSnap.critDmgBonus + goldDropBonus | +20B | 2 个可选浮点数 |
+| activeSynergies 额外 6 个可能值 | +60-90B | 最坏情况，实际 3-6 个激活 |
+| passives 新增 luckycoin | +15B | key + value |
+| **合计** | **+95-125B** | 快照从 ~6KB 增加到 ~6.1KB |
+
+仍在带宽预算内（60KB/s 下行）。
+
+### 七、阻塞状态复查（连续第 11 次）
+
+| 后端产出物 | 状态 | 前端依赖 |
+|-----------|------|---------|
+| 联机技术调研报告 | 完成 | 无 |
+| 联机架构设计规格书 | 完成 | 无 |
+| 网络协议详细规格书 | 完成 | 无 |
+| 联机前置任务清单 | 完成 | 无（已交付前端参考） |
+| 序列化接口规格书 | **需更新（PlayerSnap 新增 critDmgBonus/goldDropBonus + 6 新协同标识符）** | 前端评审 + 实现 |
+| Player 拆分方案 | 设计完成 | 前端评审 + 实现 |
+| 服务器 MVP 原型 | 评估完成 | 依赖上述两项前端实现 |
+
+前端当前版本 v1.6.1，本轮完成了幸运硬币被动 + 6 个新协同 + 回旋镖协同。Player 拆分仍未排入前端迭代计划。
+
+### 八、建议汇总
+
+| 建议 | 优先级 | 说明 |
+|------|--------|------|
+| 暴击伤害公式提取为共享函数 | 低 | `calcCritDamage(baseDmg, critDmgBonus)` 前后端共用 |
+| 金币计算提取为独立函数 | 低 | `calcKillGold(player, enemy)` 整合所有金币来源和协同加成 |
+| holywater_luckycoin 击杀来源判定复查 | 低 | 当前逻辑为"拥有圣水即触发"，非"圣水击杀才触发"，需确认是否有意设计 |
+
+### 决策记录
+
+- Player 新增 `critDmgBonus`/`goldDropBonus` 2 个字段，PlayerSnap 需同步更新，采用可选字段策略
+- 暴击伤害公式从 `dmg *= 2` 变为 `dmg *= (2 + critDmgBonus)`，为纯算术运算，服务器端确定性复现无障碍
+- 金币计算链路持续增长（Drive #16 的 CFG 常量化 -> Drive #23 的 goldDropBonus + 3 个协同条件），建议提取为独立共享函数
+- 协同系统从 12 种扩展到 18 种，`activeSynergies` 序列化为 `string[]` 的设计无需变更，只是数组可能更长
+- 6 个新协同中 4 个为数值加成（低复现复杂度），2 个为武器行为变更（中等复现复杂度），均在服务器端可控范围内
+- 连续第 11 次阻塞确认。后端设计产出物已完备，等待前端排入 Player 拆分和序列化实现
 
 ## 2026-04-06 -- Drive #22: v1.6.0 Weapon 基类重构对序列化的影响评估
 
