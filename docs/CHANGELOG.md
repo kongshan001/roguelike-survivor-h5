@@ -2,7 +2,7 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
-## [1.2.3] - 2026-04-05
+## [1.2.4] - 2026-04-05
 
 ### QA
 - Drive #14 回归测试 14/14 全绿（4.6分钟）
