@@ -6,6 +6,8 @@ import { V, rand, randInt, dist } from '../core/math.js';
 class Weapon {
   constructor(name, owner) { this.name = name; this.owner = owner; this.level = 1; this.timer = 0; }
   get maxLevel() { return 3; }
+  /** Apply shop weaponDmg upgrade multiplier to base damage */
+  applyDmg(base) { return base * (window.game && window.game.weaponDmgMul || 1); }
 }
 
 // --- HolyWater ---
@@ -24,7 +26,7 @@ export class HolyWater extends Weapon {
       for (let j = enemies.length - 1; j >= 0; j--) {
         const e = enemies[j];
         if (Math.abs(bx - e.x) < (12 + e.w / 2) && Math.abs(by - e.y) < (12 + e.h / 2)) {
-          e.hurt(this.dmg * dt * 15);
+          e.hurt(this.applyDmg(this.dmg * dt * 15));
         }
       }
     }
@@ -74,7 +76,7 @@ export class Knife extends Weapon {
           const dx = dir.x * cos - dir.y * sin;
           const dy = dir.x * sin + dir.y * cos;
           if (bullets.length < CFG.MAX_BULLETS) {
-            bullets.push({ x: this.owner.x, y: this.owner.y, vx: dx * 250, vy: dy * 250, w: 4, h: 4, dmg: this.dmg, life: 1.5, color: '#ffd54f', pierce: this.pierce, hit: new Set() });
+            bullets.push({ x: this.owner.x, y: this.owner.y, vx: dx * 250, vy: dy * 250, w: 4, h: 4, dmg: this.applyDmg(this.dmg), life: 1.5, color: '#ffd54f', pierce: this.pierce, hit: new Set() });
           }
         }
       }
@@ -103,7 +105,7 @@ export class Lightning extends Weapon {
       for (let b = 0; b < this.bolts && screenEnemies.length > 0; b++) {
         const idx = randInt(0, screenEnemies.length - 1);
         const target = screenEnemies[idx];
-        target.hurt(this.dmg, playerCritsFn ? playerCritsFn() : false);
+        target.hurt(this.applyDmg(this.dmg), playerCritsFn ? playerCritsFn() : false);
         if (sfx) sfx('lightning');
         this.effects.push({ x0: this.owner.x, y0: this.owner.y, x1: target.x, y1: target.y, t: 0.2 });
         let prev = target;
@@ -116,7 +118,7 @@ export class Lightning extends Weapon {
             if (d < 150 && d < nd) { nd = d; next = e; }
           }
           if (next) {
-            next.hurt(this.dmg * 0.5);
+            next.hurt(this.applyDmg(this.dmg * 0.5));
             hit.add(next);
             this.effects.push({ x0: prev.x, y0: prev.y, x1: next.x, y1: next.y, t: 0.2 });
             prev = next;
@@ -161,7 +163,7 @@ export class Bible extends Weapon {
         if (!this.hitTimers.has(e)) this.hitTimers.set(e, 0);
         const ht = this.hitTimers.get(e);
         if (ht <= 0) {
-          e.hurt(this.dmg);
+          e.hurt(this.applyDmg(this.dmg));
           this.hitTimers.set(e, 0.3);
         } else {
           this.hitTimers.set(e, ht - dt);
@@ -223,9 +225,9 @@ export class FireStaff extends Weapon {
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
         if (Math.abs(diff) < halfArc) {
-          e.hurt(this.dps * dt);
+          e.hurt(this.applyDmg(this.dps * dt));
           if (!e._burn) e._burn = { dmg: 0, t: 0 };
-          if (this.burnDps > 0) { e._burn.dmg = this.burnDps; e._burn.t = 2 + burnDurBonus; }
+          if (this.burnDps > 0) { e._burn.dmg = this.applyDmg(this.burnDps); e._burn.t = 2 + burnDurBonus; }
         }
       }
     }
@@ -298,7 +300,7 @@ export class FrostAura extends Weapon {
     for (const e of enemies) {
       const d = dist(this.owner, e);
       if (d < this.radius) {
-        e.hurt(this.dps * dt);
+        e.hurt(this.applyDmg(this.dps * dt));
         if (!e._slow || e._slow < this.slow) e._slow = this.slow;
         e._slowTimer = 0.5;
         const totalFreezeChance = this.freezeChance + freezeBonus;
@@ -360,7 +362,7 @@ export class Blizzard extends Weapon {
     for (const e of enemies) {
       const d = dist(this.owner, e);
       if (d < this.radius) {
-        e.hurt(this.dps * dt);
+        e.hurt(this.applyDmg(this.dps * dt));
         if (!e._slow || e._slow < this.slow) e._slow = this.slow;
         e._slowTimer = 0.5;
         if (this.freezeChance > 0 && Math.random() < this.freezeChance * dt) {
@@ -380,7 +382,7 @@ export class Blizzard extends Weapon {
       for (let b = 0; b < 3 && nearEnemies.length > 0; b++) {
         const idx = randInt(0, nearEnemies.length - 1);
         const target = nearEnemies[idx];
-        target.hurt(this.lightningDmg);
+        target.hurt(this.applyDmg(this.lightningDmg));
         this.effects.push({ x0: this.owner.x, y0: this.owner.y, x1: target.x, y1: target.y, t: 0.2 });
         const hit = new Set([target]);
         let prev = target;
@@ -392,7 +394,7 @@ export class Blizzard extends Weapon {
             if (d < 150 && d < nd) { nd = d; next = e; }
           }
           if (next) {
-            next.hurt(this.lightningDmg * 0.5);
+            next.hurt(this.applyDmg(this.lightningDmg * 0.5));
             hit.add(next);
             this.effects.push({ x0: prev.x, y0: prev.y, x1: next.x, y1: next.y, t: 0.2 });
             prev = next;
@@ -408,7 +410,7 @@ export class Blizzard extends Weapon {
       for (const e of enemies) {
         if (s.hit.has(e)) continue;
         if (Math.abs(s.x - e.x) < (6 + e.w / 2) && Math.abs(s.y - e.y) < (6 + e.h / 2)) {
-          e.hurt(this.shardDmg, playerCritsFn ? playerCritsFn() : false);
+          e.hurt(this.applyDmg(this.shardDmg), playerCritsFn ? playerCritsFn() : false);
           s.hit.add(e);
           break;
         }
@@ -492,7 +494,7 @@ export class ThunderHolyWater extends Weapon {
       const by = this.owner.y + Math.sin(a) * this.radius;
       for (const e of enemies) {
         if (Math.abs(bx - e.x) < (12 + e.w / 2) && Math.abs(by - e.y) < (12 + e.h / 2)) {
-          e.hurt(this.dmg * dt * 15);
+          e.hurt(this.applyDmg(this.dmg * dt * 15));
         }
       }
     }
@@ -514,7 +516,7 @@ export class ThunderHolyWater extends Weapon {
           if (d < nd) { nd = d; nearest = e; }
         }
         if (nearest) {
-          nearest.hurt(this.lightningDmg);
+          nearest.hurt(this.applyDmg(this.lightningDmg));
           this.effects.push({ x0: bx, y0: by, x1: nearest.x, y1: nearest.y, t: 0.2 });
           const hit = new Set([nearest]);
           let prev = nearest;
@@ -526,7 +528,7 @@ export class ThunderHolyWater extends Weapon {
               if (d < 150 && d < nd) { nd = d; next = e; }
             }
             if (next) {
-              next.hurt(this.lightningDmg * 0.5);
+              next.hurt(this.applyDmg(this.lightningDmg * 0.5));
               hit.add(next);
               this.effects.push({ x0: prev.x, y0: prev.y, x1: next.x, y1: next.y, t: 0.2 });
               prev = next;
@@ -598,8 +600,8 @@ export class FireKnife extends Weapon {
           const dy = dir.x * sin + dir.y * cos;
           if (bullets.length < CFG.MAX_BULLETS) {
             bullets.push({ x: this.owner.x, y: this.owner.y, vx: dx * 280, vy: dy * 280,
-              w: 6, h: 4, dmg: this.dmg, life: 1.8, color: '#ff6d00', pierce: this.pierce, hit: new Set(),
-              burnDmg: this.burnDps, burnDur: this.burnDur });
+              w: 6, h: 4, dmg: this.applyDmg(this.dmg), life: 1.8, color: '#ff6d00', pierce: this.pierce, hit: new Set(),
+              burnDmg: this.applyDmg(this.burnDps), burnDur: this.burnDur });
           }
         }
       }
@@ -625,7 +627,7 @@ export class HolyDomain extends Weapon {
       const by = this.owner.y + Math.sin(a) * this.radius;
       for (const e of enemies) {
         if (Math.abs(bx - e.x) < (14 + e.w / 2) && Math.abs(by - e.y) < (14 + e.h / 2)) {
-          e.hurt(this.orbDps * dt);
+          e.hurt(this.applyDmg(this.orbDps * dt));
         }
       }
     }
@@ -639,7 +641,7 @@ export class HolyDomain extends Weapon {
       for (const e of enemies) {
         const d = dist(this.owner, e);
         if (d < this.pulseRadius) {
-          e.hurt(this.pulseDmg, playerCritsFn ? playerCritsFn() : false);
+          e.hurt(this.applyDmg(this.pulseDmg), playerCritsFn ? playerCritsFn() : false);
         }
       }
       this.pulseEffects.push({ x: this.owner.x, y: this.owner.y, t: 0.5, r: this.pulseRadius });

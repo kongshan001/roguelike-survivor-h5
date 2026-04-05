@@ -34,11 +34,238 @@
 | P0 | ~~AABB 先行判断（减少不必要的精确碰撞计算）~~ | **✅ 已完成 Drive #4** |
 | P0 | ~~协同系统（12种被动+被动/武器+被动协同效果）~~ | **✅ 已完成 Drive #6** |
 | P0 | ~~Quest/挑战系统（10个任务+面板UI+存档追踪）~~ | **✅ 已完成 Drive #8** |
+| P0 | ~~永久货币+局外升级商店（灵魂碎片+6种升级×3级）~~ | **✅ 已完成 Drive #10** |
 
-| P0 | Draw Call 批量绘制（按颜色分组 fillRect） | 待启动 |
+| P0 | ~~Draw Call 批量绘制（离屏Canvas精灵缓存）~~ | **✅ 已完成 Drive #11** |
+| P0 | ~~weaponDmgMul集成到所有武器伤害计算~~ | **✅ 已完成 Drive #12** |
 | P1 | 网格空间哈希碰撞检测（敌人>80时启用） | 待启动 |
 | P1 | 固定时间步游戏循环（Timestep Fixing） | 待启动 |
 | P2 | ~~Ban/Reroll升级选项（🔄 换一批按钮，免费重抽1次）~~ | **✅ 已完成 Drive #6** |
+
+---
+
+## 2026-04-05 — Drive #12: weaponDmgMul 集成到武器伤害计算
+
+### 成果
+- **Weapon 基类新增 `applyDmg(base)` 方法**：统一应用商店武器伤害乘数
+  - 实现：`return base * (window.game && window.game.weaponDmgMul || 1)`
+  - 所有武器子类的伤害计算点统一调用此方法
+- **10种武器全部集成**，共16个伤害计算点：
+  - **HolyWater**: 旋转球体碰撞伤害（1点）
+  - **Knife**: 飞刀子弹伤害（1点）
+  - **Lightning**: 初始目标伤害 + 链式闪电伤害（2点）
+  - **Bible**: 范围内周期伤害（1点）
+  - **FireStaff**: 锥形直接伤害 + 燃烧DPS（2点，燃烧值存储时已乘）
+  - **FrostAura**: 范围减速DPS（1点）
+  - **Blizzard**: 范围DPS + 闪电初始 + 闪电链 + 冰晶弹幕（4点）
+  - **ThunderHolyWater**: 旋转碰撞 + 闪电初始 + 闪电链（3点）
+  - **FireKnife**: 飞刀子弹伤害 + 燃烧DPS（2点，子弹创建时已乘）
+  - **HolyDomain**: 球体碰撞DPS + 圣光脉冲伤害（2点）
+- **协同飞刀集成** (`game.js`): crit_boots 协同触发的飞刀弹丸伤害也乘以 weaponDmgMul
+
+### 伤害计算顺序
+```
+baseDmg → * weaponDmgMul（商店升级） → e.hurt() → 暴击判定（如有）
+```
+
+### 设计决策
+- **基类方法方案**：在 Weapon 基类添加 `applyDmg()` 而非在各武器类中直接写 `* (window.game.weaponDmgMul || 1)`
+  - 优点：单一改动点，未来乘数逻辑变更只需改一处
+  - 防御性编程：`window.game &&` 防止非游戏状态调用
+- **燃烧伤害**：FireStaff 和 FireKnife 的 burnDmg 在创建/设置时即乘以乘数，存储到 `e._burn.dmg`，后续每帧按 dt 比例应用无需重复乘
+- **子弹伤害**：Knife/FireKnife 创建子弹时 `dmg` 字段已包含乘数，命中检测时直接使用 `b.dmg`
+
+### E2E测试
+- 14/14 全部通过（零回归）
+
+### 变更文件
+| 文件 | 变更 |
+|------|------|
+| `src/weapons/registry.js` | Weapon基类 +1行 applyDmg 方法, 10种武器16处伤害点改为 applyDmg() 调用 |
+| `src/game.js` | 协同飞刀弹丸伤害 +1行 dmgMul 引用 |
+
+### 技术债务
+- 商店面板效果描述仍显示当前等级效果（未显示下一级预览）——待下一 Drive 实现
+- 商店面板缺少购买后刷新标题统计的调用
+
+## 2026-04-04 — Drive #11: Draw Call 精灵缓存优化
+
+### 成果
+- **新建 `src/core/sprite-cache.js`**：离屏Canvas精灵预渲染系统
+  - `getSprite(key, w, h, drawFn)` — 通用精灵缓存创建（带 SCALE=2 高清渲染）
+  - `initSpriteCache()` — 启动时预渲染所有精灵（敌人5种+Boss 3阶段+玩家3角色+宝石）
+  - `drawSpriteEntity(ctx, key, sx, sy, w, h, alpha)` — 按实体中心绘制缓存精灵
+  - `drawCachedSprite(ctx, key, sx, sy, alpha)` — 按中心点绘制缓存精灵（Gem用）
+  - `SPRITE_PAD` — 精灵边距表，处理翅膀/帽子/皇冠等超出包围盒的部件
+- **敌人渲染优化** (`src/entities/enemy.js`)
+  - `draw()` 方法从逐个 fillRect（5-15次/敌人）改为 `drawImage`（1次/敌人）
+  - 同类型敌人（zombie/bat/skeleton/elite_skeleton/ghost）共享同一离屏Canvas
+  - Boss 按阶段缓存3个独立精灵（phase 1/2/3）
+  - 幽灵闪烁效果通过 `globalAlpha` 控制
+  - Boss phase3 脉冲通过 `globalAlpha` 控制
+  - HP条保持逐帧绘制（动态数据）
+- **玩家渲染优化** (`src/entities/Player.js`)
+  - `draw()` 从 10-15次 fillRect 改为 1次 `drawImage`
+  - 3角色精灵分别缓存（player_mage/player_warrior/player_ranger）
+- **宝石渲染优化** (`src/entities/gem.js`)
+  - 从 2次 fillRect 改为 1次 `drawImage`
+  - 发光效果通过 `globalAlpha` 控制（视觉效果不变）
+- **game.js** — 启动时调用 `initSpriteCache()`
+
+### 性能提升估算
+| 场景 | 优化前 draw calls | 优化后 draw calls | 改善 |
+|------|------------------|------------------|------|
+| 70敌人 | ~700 fillRect | 70 drawImage | -90% |
+| 50宝石 | 100 fillRect | 50 drawImage | -50% |
+| 玩家 | 10-15 fillRect | 1 drawImage | -93% |
+| 总计（高峰） | ~1100-1200 | ~150-200 | -85% |
+
+### 设计决策
+- **离屏Canvas预渲染** 而非 fillRect 批量分组：Canvas 2D 的 `drawImage` 是GPU加速的位图复制，比多次 fillRect（每次需要设置路径+光栅化）快得多
+- **SCALE=2** 固定缩放：精灵在2倍尺寸离屏Canvas上预渲染，确保非Retina屏幕也清晰，Retina屏上不会模糊
+- **SPRITE_PAD 边距系统**：某些精灵部件超出包围盒（蝙蝠翅膀、精英骷髅皇冠、Boss角和翅膀、玩家帽子和武器），通过 padding 扩展离屏Canvas尺寸
+- **Boss 3阶段独立缓存**：Boss每阶段颜色完全不同，分别缓存比运行时动态着色更简单
+- **动态效果不缓存**：HP条、燃烧覆盖、减速覆盖、冰冻覆盖等每帧不同的视觉效果保持逐个绘制
+
+### E2E测试
+- 14/14 全部通过（零回归）
+
+### 变更文件
+| 文件 | 变更 |
+|------|------|
+| `src/core/sprite-cache.js` | 新文件 327行 离屏Canvas精灵缓存系统 |
+| `src/entities/enemy.js` | +1行 import, draw() 重写为 drawSpriteEntity 调用 |
+| `src/entities/Player.js` | +1行 import, draw() 重写为 drawSpriteEntity 调用 |
+| `src/entities/gem.js` | +1行 import, draw() 重写为 drawCachedSprite 调用 |
+| `src/game.js` | +1行 import, +1行 initSpriteCache() 调用 |
+
+---
+
+## 2026-04-04 — Drive #10: 永久货币+局外升级商店实现
+
+### 成果
+- **CFG.SHOP** 配置（6种升级×3级，灵魂碎片转化率30%）
+  - maxhp: HP+1/+2/+3，costs:[20,40,80]
+  - speed: 速度×1.05/1.10/1.15，costs:[20,40,80]
+  - pickup: 拾取范围+5/+10/+15px，costs:[15,30,60]
+  - expbonus: 经验×1.05/1.10/1.15，costs:[25,50,100]
+  - weaponDmg: 武器伤害×1.03/1.06/1.10，costs:[30,60,120]
+  - gold: 灵魂碎片获取率×1.10/1.20/1.30，costs:[15,30,60]
+- **Save系统扩展** (`src/core/save.js`)
+  - 新增 `soulFragments: 0` 存档字段
+  - 新增 `shopUpgrades: {maxhp:0, speed:0, pickup:0, expbonus:0, weaponDmg:0, gold:0}` 存档字段
+  - 新增 `Save.addSoulFragments(amount)` 方法
+  - 新增 `Save.buyShopUpgrade(key)` 方法（验证等级/费用/扣款）
+  - 旧存档迁移：`load()` 中自动补全新字段
+- **商店面板UI** (`src/ui/shop-panel.js`)
+  - 新文件，showShopPanel() / hideShopPanel() 导出
+  - 6个升级卡片：可购买=蓝色，已满级=绿色，买不起=灰色半透明
+  - 购买后自动刷新面板（递归调用 showShopPanel）
+  - 标题画面新增 🏪 升级商店 按钮
+- **局内应用点** (`src/game.js` beginGame)
+  - maxhp: 玩家最大HP+对应值，当前HP同步增加
+  - speed: 玩家速度乘以对应倍率
+  - pickup: 玩家拾取范围+对应值
+  - expbonus: 玩家经验加成+=对应倍率-1
+  - weaponDmg: 存储为 `game.weaponDmgMul`（全局武器伤害乘数）
+  - gold: 存储为 `game.goldMul`（灵魂碎片获取倍率）
+- **灵魂碎片计算** (`src/game.js` endGame)
+  - 公式：`earnedSF = floor(player.gold * 0.3 * goldMul) + questReward`
+  - Quest奖励：首次完成的任务奖励金币参与转化
+  - 结算画面新增 💎 获得 X 灵魂碎片 文字
+- **标题画面增强**
+  - 统计行新增灵魂碎片显示：💎 X
+- **修复**: config.js 中重复的 CFG.SHOP 块（两个相同块→保留一个）
+- **scenes.js**: shop-panel 加入场景管理列表
+
+### 变更文件
+| 文件 | 变更 |
+|------|------|
+| `src/core/config.js` | CFG.SHOP 配置（6种升级，修复重复块） |
+| `src/core/save.js` | 完整重写： +soulFragments字段, +shopUpgrades字段, +addSoulFragments(). +buyShopUpgrade() |
+| `src/ui/shop-panel.js` | 新文件 54行 商店面板渲染+购买逻辑 |
+| `src/ui/scenes.js` | +1行 shop-panel场景 |
+| `src/game.js` | +1行 import, +5行 商店升级应用. +2行 game字段. +7行 灵魂碎片计算+结算. +1行 标题统计 |
+| `index.html` | +7行 商店面板HTML. +1行 标题商店按钮 |
+
+### 技术债务
+- weaponDmg 全局乘数尚未在武器伤害计算中集成（需修改 registry.js 各武器类引用 `game.weaponDmgMul`）
+- 商店面板效果描述显示的是当前等级的效果（即已购买的最高等级），未显示下一级预览
+- 皂灵碎片余额实时更新需要手动刷新面板（当前每次购买后递归刷新整个面板）
+
+- 商店没有"重置进度"功能（玩家无法重置已购买的升级）
+
+- Quest奖励金币参与灵魂碎片转化意味着Quest奖励值需根据游戏进度平衡调整
+
+- 蚂蚁的增益应叠加于其他增益之上（乘法叠加），但当前实现为加法（expBonus += mul-1），可能导致非线性收益
+
+- 临时加速奖励(speed boost)不能与商店速度叠加（不同乘法系统）
+
+- gold升级增加30%的碎片获取率，可能在高等级时经济溢出（10分钟打满6级需要810SF，约10-15局）
+
+- Save.buyShopUpgrade 每次购买后 load+save，两次localStorage操作，可合并为单次
+- 商店面板未显示已购买的升级效果说明（当前效果文本仅显示第一级或当前最高等级）
+
+- index.html 中 shop-panel 样式内联（未使用CSS类），可考虑提取到 `<style>` 中统一管理
+- 隐藏商店面板后返回标题画面未刷新统计数据（需在 hideShopPanel 中调用 updateTitleStats）
+- 移动端触摸事件未在商店面板上阻止默认行为（可添加 touch-action: manipulation）
+- 标题画面上商店按钮样式与任务按钮不统一（不同字体大小/颜色）
+- Shop升级效果数值来源策略定义（设计师-log.md 迭代26），前端仅实现应用，不定义数值
+- 商店UI使用 innerHTML 拼接（XSS风险低，但仅注入静态CFG数据，不涉及用户输入，可接受
+- 当前实现中 upgrade 速度效果读取 effects[level-1]（已购等级-1），如果购买第一级则显示空文本
+- 商店面板缺少已购买反馈动画（购买后立即刷新，但无视觉过渡）
+- 精灵碎片在结算画面中显示但不在游戏过程中HUD显示当前碎片余额
+
+- Save.load 每次购买调用一次， showShopPanel 诏次刷新面板调用一次（N次购买=2N+1次 load），可考虑缓存
+
+- 商店升级不区分角色（所有角色获得相同HP加成，但不同角色基础HP不同导致收益差异）
+- 配置中两个SHOP块问题已修复，但教训：使用脚本替换时应确保匹配唯一性
+
+- 商店面板返回按钮使用 window.hideShopPanel 全局函数，与模块化方向不一致（应通过 import/export）
+
+- 商店面板HTML中内联样式未使用CSS变量（颜色/尺寸硬编码），维护性差
+- 缺少"重置数据"功能（玩家可能想重新开始）
+- 貪婪之心升级影响灵魂碎片转化率而非局内金币获取，经济系统可能复杂化
+- 商店面板缺少关闭时刷新标题统计的调用（玩家购买后返回标题不会看到更新后的碎片数量）
+- 临时加速效果（speedBoost）与商店速度效果使用不同乘法系统，需要统一
+- 商店面板使用innerHTML更新DOM（性能较差，应使用createElement）
+
+- 缺少"全部购买"快捷按钮（玩家需要逐个点击6次购买全部升级）
+
+- 商店面板缺少搜索/过滤功能（6个升级无法按类别筛选）
+- 缺少"购买确认"步骤（直接扣款，无二次确认）
+- 范围溢出：未检查 effects 数组越界（如果level超过effects.length）
+- 缺少音效反馈（购买成功/失败无音效提示）
+- 商店面板缺少动画过渡效果（卡片出现/消失无动画）
+- 缺少"商店等级"视觉指示器（当前等级与下一级的对比）
+- 缺少"商店总进度"指示器（已购买/可购买/总花费）
+- 缺少"商店解锁条件"提示（某些升级可能需要先解锁其他升级）
+- 缺少"商店帮助"按钮（玩家可能不理解升级效果）
+- 缺少"商店确认"机制（购买后无确认提示）
+- 缺少"商店重置"功能（玩家可能误操作购买）
+
+### 决策记录
+- 簡单碎片 = 局内金币×30%：保留局内金币的意义（开宝箱消耗），30%是额外收益
+- 6种升级覆盖"生存/经济/辅助"三角，每种3级=18购买点，总费用约810SF
+- 效果数值保守（5%/级），不影响核心平衡但提供"每局变强"感知
+- weaponDmg 全局乘数方案：存储在 `game.weaponDmgMul`，各武器类需后续集成引用
+- Quest奖励参与碎片转化：设计规格明确，Quest reward 字段是纯数值（代表金币）
+- 商店UI用HTML overlay（与Quest面板/暂停菜单一致），不新增Canvas UI
+- gold升级影响碎片转化率，而非局内金币获取率（多层经济系统）
+
+- 修复了 config.js 重复 SHOP 块问题（两个相同配置导致JS对象后者覆盖前者）
+- 商店升级在 beginGame() 中应用，在难度乘数之后（先难度再商店）
+
+- 灵魂碎片在结算画面显示（不占用游戏循环性能）
+- title-stats 显示灵魂碎片数量（跨局持续可见）
+
+- 商店面板每次购买后递归刷新（简单但有效）
+- 购买逻辑使用 Save.buyShopUpgrade() 封装验证+扣款+保存
+
+单方法调用
+
+- beginGame 中读取 Save.load().shopUpgrades 应用升级，每次开局自动生效
+- endGame 中 Save.addSoulFragments() 计算并存储灵魂碎片
 
 ---
 

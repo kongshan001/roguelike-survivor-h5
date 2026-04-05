@@ -4,6 +4,53 @@
 
 ---
 
+## 2026-04-05 — Drive #10: 出兵节奏加速+AUTO挂机 回归测试
+
+### 测试结果：1/14 通过（13 FAILED，Critical 回归）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 1 PASS | 标题画面渲染 | 标题画面为静态HTML，不依赖JS |
+| 13 FAIL | 全部其余测试 | 模块加载链中断，游戏完全无法启动 |
+
+### 根因分析
+
+**BUG-009 (Critical)**：`src/core/sprite-cache.js` 文件缺失，导致整个 ES Module 加载链中断。
+
+- **直接原因**：commit `beec35d` 在 `src/game.js` 第25行新增了 `import { initSpriteCache } from './core/sprite-cache.js'`，并在第732行调用 `initSpriteCache()`，但该文件从未被创建。
+- **影响范围**：浏览器加载 `src/main.js` -> `src/game.js` 时，因 import 404 失败，整个 game.js 模块不执行，导致所有 `window.startGame`、`window.pickChar`、`window.pickDiff` 等全局函数均未注册。
+- **表现**：点击"开始游戏"按钮无反应，`title-screen` 始终覆盖页面，所有交互测试因 `title-screen intercepts pointer events` 而超时失败。
+- **网络请求**：`http://localhost:8765/src/core/sprite-cache.js` 返回 404。
+
+### 新增缺陷
+
+| ID | 严重度 | 模块 | 描述 | 状态 | 指派 |
+|----|--------|------|------|------|------|
+| BUG-009 | **Critical** | 模块加载 | `src/core/sprite-cache.js` 缺失，game.js import 404，游戏完全无法启动 | 待处理 | frontend |
+
+### 验证项
+
+- JS 语法检查：4个变更文件括号平衡均通过（game.js 175/175/449/449/32/32）
+- 网络请求确认：`src/core/sprite-cache.js` 返回 404
+- `window.startGame` 类型为 `undefined`（正常应为 `function`）
+- commit `beec35d` 变更范围：index.html / src/core/config.js / src/game.js / src/systems/spawner.js / src/ui/upgrade-panel.js
+- 出兵节奏配置变更（CFG.SPAWN）：初期2.5s/1只 -> 1.5s/2只，MAX_ENEMIES 50->70 -- 待 BUG-009 修复后验证
+- AUTO自动升级功能：HUD新增 AUTO 按钮，升级面板自动选择 -- 待 BUG-009 修复后验证
+- Shop升级系统集成（shopUpgrades 字段应用到 beginGame） -- 待 BUG-009 修复后验证
+
+### 决策记录
+
+- 当前测试全部受阻于 BUG-009，无法验证出兵节奏和 AUTO 功能
+- BUG-009 修复后需重新执行完整 E2E 测试套件
+- 版本号保持 v1.2.0 不变（Critical bug 未修复，不应递增版本）
+
+### 调研报告确认
+
+- `docs/team/qa-research.md` 存在，内容完整（7个方向、可落地方案排序）
+- P0 方案：Workers并行、智能等待替代、tag分组 -- 下次 Drive 可推进落地
+
+---
+
 ## 2026-04-04 — Drive #8: Quest/挑战系统 回归测试
 
 ### 测试结果：12/14 通过（2 flaky，非回归）
@@ -172,6 +219,7 @@
 
 | ID | 严重度 | 模块 | 描述 | 状态 | 指派 |
 |----|--------|------|------|------|------|
+| **BUG-009** | **Critical** | 模块加载 | `src/core/sprite-cache.js` 缺失，游戏无法启动 | **待处理** | **frontend** |
 | BUG-005 | Low | 武器-圣水 | 圣水Lv1伤害极低 | ✅ 已修复 v0.3.1 | frontend |
 | BUG-006 | Low | 道具-磁铁 | 全图吸引后磁铁道具价值大降 | ✅ 已修复 v0.3.1 | designer |
 | BUG-007 | Low | UI-结算 | 结算画面金币用途不明确 | ✅ 已修复 v0.6.0 | designer/frontend |

@@ -145,6 +145,13 @@ canvas{display:block;position:absolute;top:0;left:0}
     <div id="quest-list" style="width:100%;max-width:400px;max-height:60vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px"></div>
     <button onclick="hideQuestPanel()" style="margin-top:16px;font:bold 14px monospace;color:#1a1a2e;background:#ffd54f;border:none;padding:8px 32px;border-radius:8px;cursor:pointer">返回</button>
   </div>
+
+  <div id="shop-panel" style="position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:20;padding:20px">
+    <h2 style="font:bold 22px monospace;color:#ffd54f;margin-bottom:4px">🏪 升级商店</h2>
+    <div style="font:bold 14px monospace;color:#ce93d8;margin-bottom:16px">灵魂碎片: <span id="shop-sf">0</span></div>
+    <div id="shop-list" style="width:100%;max-width:400px;max-height:60vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px"></div>
+    <button onclick="hideShopPanel()" style="margin-top:16px;font:bold 14px monospace;color:#1a1a2e;background:#ffd54f;border:none;padding:8px 32px;border-radius:8px;cursor:pointer">返回</button>
+  </div>
 </div>
 <script type="module" src="src/main.js"></script>
 </body>

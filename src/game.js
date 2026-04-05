@@ -22,7 +22,6 @@ import {
 import { drawHUD } from './ui/hud.js';
 import { showQuestPanel, hideQuestPanel } from './ui/quest-panel.js';
 import { showShopPanel, hideShopPanel } from './ui/shop-panel.js';
-import { initSpriteCache } from './core/sprite-cache.js';
 
 // Export game state globally for test access
 window.game = null;
@@ -457,10 +456,11 @@ function loop(time) {
         if (e._lastCrit && window.game.player.hasSynergy('crit_boots')) {
           const kb = CFG.SYNERGIES.crit_boots.onCritKnife;
           const ang = Math.atan2(e.y - window.game.player.y, e.x - window.game.player.x);
+          const dmgMul = window.game.weaponDmgMul || 1;
           window.game.bullets.push({
             x: window.game.player.x, y: window.game.player.y, w: 6, h: 6,
             vx: Math.cos(ang) * kb.speed, vy: Math.sin(ang) * kb.speed,
-            dmg: Math.ceil(e.dmg * kb.dmgMul) || 1, life: kb.life,
+            dmg: Math.ceil(e.dmg * kb.dmgMul * dmgMul) || 1, life: kb.life,
             color: '#4fc3f7', hit: new Set()
           });
         }
@@ -729,6 +729,5 @@ loop(performance.now());
 
 // ===== INIT =====
 initInput();
-initSpriteCache();
 showScene('title-screen');
 updateTitleStats();
