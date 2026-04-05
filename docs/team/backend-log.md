@@ -12,12 +12,99 @@
 | P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | ✅ 设计规格书完成 |
 | P1 | 网络协议详细规格书（消息定义/快照格式/断线重连） | ✅ Drive #11 完成 |
 | P1 | 联机前置任务清单（前端 1 页精简清单） | ✅ Drive #15 已输出 |
+| P1 | 序列化接口规格书（v1.4.0 代码逐字段对照版） | ✅ Drive #19 已输出独立规格书 |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，待前端实现 |
-| P1 | 可序列化状态接口设计（游戏状态快照格式） | 🔨 设计完成待评审，待前端实现 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | ⏳ 已评估，阻塞于 P1 前端实现 |
 | P2 | Docker 容器化部署方案 | 待评估（低优先级） |
 
 ---
+
+## 2026-04-06 -- Drive #19: 序列化接口规格书 (代码逐字段对照版)
+
+### 背景
+
+v1.4.0 前端本轮无代码变更（回旋镖武器实现异常已回滚）。联机服务器 MVP 仍阻塞于前端 Player 拆分。
+
+此前的序列化接口设计仅存在于 backend-log.md 内嵌的代码片段中，且编写于 v1.0.0 时代（Player 30 行构造函数、Enemy 20 行构造函数）。当前 Player.js 已有 58 行构造函数、enemy.js 已有 22 行构造函数，字段数量显著增长（combo/dash/synergy/quest/ghost/boss-phase3/splitter/frost-bullet 等）。需要对照实际代码重新梳理。
+
+### 成果
+
+- 输出独立规格书 `docs/superpowers/specs/2026-04-05-serialization-interface-spec.md`
+- 逐字段对照 v1.4.0 代码库（Player.js 58 个字段、enemy.js 22 个构造字段 + 动态字段、registry.js 12 种武器子弹字段、game.js 全部实体数组）
+- 明确"不序列化字段"列表及原因（函数引用、纯视觉、固定属性）
+- 新增子弹 hit: Set 问题分析及解决方案
+- 重新估算快照大小：~6KB/快照（比 Drive #11 估算增加 ~1KB，因 synergy/quest/frost 字段增长）
+- 与网络协议规格书的差异对照表
+
+### 一、规格书核心内容
+
+**文件**: `docs/superpowers/specs/2026-04-05-serialization-interface-spec.md`
+
+| 章节 | 内容 |
+|------|------|
+| 3. 快照格式定义 | GameSnapshot + 7 种实体 Snap 接口定义，TypeScript 类型签名 |
+| 4. 序列化函数设计 | snapshot() / applySnapshot() / restoreBullets() 完整实现代码 |
+| 5. 对现有代码的改动清单 | 3 个文件、~104 行改动（新建 serialize.js + 1 行 enemy.js + 3 行 game.js） |
+| 6. Enemy ID 方案 | 单机无ID -> 联机服务器分配，过渡方案 |
+| 7. 快照大小估算 | 基于实际字段重新估算 ~6KB |
+| 9. 与网络协议规格书的对齐 | 差异说明 + 映射方案 |
+| 10. 决策记录 | 6 项技术决策及理由 |
+
+### 二、v1.0.0 设计 vs v1.4.0 实际代码的主要差异
+
+| 差异项 | v1.0.0 设计 | v1.4.0 实际 | 规格书处理 |
+|--------|-----------|-----------|-----------|
+| Player 字段数量 | ~15 个 | ~30 个 | 新增 synergy/quest/boost/dash 字段 |
+| Enemy 类型 | 4 种 | 7 种 (+ghost/splitter/elite_skeleton) | 新增 ghost/splitter 专用字段 |
+| Boss 阶段 | 2 阶段 | 3 阶段 (+螺旋弹幕) | phase 1-3, spiralAngle |
+| 子弹可选字段 | 无 | frostSlow/frostFreeze 等冰冻系列 | 可选字段，有值时才包含 |
+| Bullet.hit | 未考虑 | Set\<Enemy\> 引用 | 不序列化，反序列化时重建空 Set |
+| Synergy 系统 | 不存在 | activeSynergies Set + 5 种协同 | 序列化为 string[] |
+| Dash 系统 | 不存在 | _dashing/_dashCD/_dashDir/_afterimages | dashing/dashCD 序列化，_afterimages 不序列化 |
+
+### 三、关键设计决策
+
+1. **序列化函数独立于类**：`snapshot(game)` 是独立函数，不是 `Player.prototype.snapshot()` 方法。理由：不侵入现有类定义，最小改动原则。联机后如果需要可改为方法形式。
+
+2. **子弹 hit: Set 不序列化**：子弹的 `hit: Set<Enemy>` 包含对象引用，无法 JSON 化。单机模式不序列化 hit，反序列化时创建空 Set（子弹穿透统计丢失但可接受）。联机模式服务器端改用 `pierceLeft: number` 代替 Set。
+
+3. **精度策略**：坐标整数化（`Math.round`），速度/伤害 1 位小数，计时器 2 位小数。肉鸽游戏不需要亚像素精度。
+
+4. **可选字段省略**：frostSlow/burnDmg 等可选字段仅在有值时包含在快照中，减少传输量。反序列化时用 `|| 0` 默认值。
+
+### 四、阻塞状态复查（连续第 7 次）
+
+| 后端产出物 | 状态 | 前端依赖 |
+|-----------|------|---------|
+| 联机技术调研报告 | 完成 | 无 |
+| 联机架构设计规格书 | 完成 | 无 |
+| 网络协议详细规格书 | 完成 | 无 |
+| 联机前置任务清单 | 完成 | 无（已交付前端参考） |
+| **序列化接口规格书** | **完成（独立文件）** | **前端评审 + 实现** |
+| Player 拆分方案 | 设计完成 | 前端评审 + 实现 |
+| 服务器 MVP 原型 | 评估完成 | 依赖上述两项前端实现 |
+
+前端当前版本 v1.4.0，本轮无代码变更。Player 拆分仍未排入前端迭代计划。
+
+### 五、产出物清单更新
+
+序列化接口设计从 backend-log.md 内嵌升级为独立规格书：
+
+| 产出物 | 文件位置 | 状态 |
+|--------|---------|------|
+| 联机技术调研报告 | `docs/team/backend-research.md` | 完成 |
+| 联机架构设计规格书 | `docs/superpowers/specs/2026-04-04-multiplayer-architecture-design.md` | 完成 |
+| 网络协议详细规格书 | `docs/superpowers/specs/2026-04-04-network-protocol-spec.md` | 完成 |
+| 联机前置任务清单 | `docs/superpowers/specs/2026-04-05-multiplayer-prerequisites-checklist.md` | 完成 |
+| **序列化接口规格书** | **`docs/superpowers/specs/2026-04-05-serialization-interface-spec.md`** | **Drive #19 完成** |
+| Player 拆分方案 | backend-log.md 内嵌 | 待升级为独立规格书 |
+
+### 决策记录
+
+- 序列化接口规格书从 log 内嵌代码片段升级为独立规格书，原因：(1) 字段数量从 v1.0.0 显著增长，log 内嵌不够清晰；(2) 前端实现需要逐字段参考，独立文件更方便；(3) 包含完整实现代码，可直接复制修改
+- 逐字段对照代码而非使用通用描述，降低前端实现时的歧义
+- 快照大小从 ~5KB 修正为 ~6KB，仍在带宽预算内
+- Player 拆分方案仍在 log 内嵌，如有需要可在下一 drive 升级为独立规格书
 
 ## 2026-04-06 -- Drive #18: 状态确认，v1.4.0 联机影响复查
 
