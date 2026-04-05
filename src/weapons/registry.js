@@ -859,15 +859,6 @@ export class Boomerang extends Weapon {
   getLevelData() {
     return CFG.BOOMERANG.levels[this.level] || CFG.BOOMERANG.levels[1];
   }
-  findNearestEnemy(enemies, fromX, fromY, maxDist) {
-    let best = null, bestD = maxDist * maxDist;
-    for (const e of enemies) {
-      if (e.hp <= 0) continue;
-      const d = (e.x - fromX) ** 2 + (e.y - fromY) ** 2;
-      if (d < bestD) { bestD = d; best = e; }
-    }
-    return best;
-  }
   update(dt, enemies) {
     const data = this.getLevelData();
     this.timer -= dt;
