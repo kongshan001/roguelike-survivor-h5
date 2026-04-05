@@ -12,12 +12,217 @@
 | P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | ✅ 设计规格书完成 |
 | P1 | 网络协议详细规格书（消息定义/快照格式/断线重连） | ✅ Drive #11 完成 |
 | P1 | 联机前置任务清单（前端 1 页精简清单） | ✅ Drive #15 已输出 |
-| P1 | 序列化接口规格书（需更新：回旋镖投射物字段） | ⚠️ Drive #19 已输出，Drive #20 需补充 BoomerangSnap |
+| P1 | 序列化接口规格书（需更新：Boomerang/Thunderang/Blazerang 投射物+特效） | ⚠️ Drive #21 评估完成，Drive #20 方案需扩展 |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，待前端实现 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | ⏳ 已评估，阻塞于 P1 前端实现 |
 | P2 | Docker 容器化部署方案 | 待评估（低优先级） |
 
 ---
+
+## 2026-04-06 -- Drive #21: Thunderang/Blazerang 进化武器对联机序列化的影响评估
+
+### 背景
+
+v1.5.0 前端提交（`1104d45`）不仅实现了基础 Boomerang 武器，还**同时实现了 2 个进化武器类** Thunderang 和 Blazerang。这超出了 Drive #20 的预期（当时认为进化武器尚未实现）。
+
+当前代码库中回旋镖系武器共 3 个类，全部使用 `weapon.projectiles[]` 内部数组管理投射物：
+
+| 类名 | 类型 | projectiles[] 额外字段 | 其他内部状态 |
+|------|------|----------------------|------------|
+| Boomerang | 基础 | `hit: Set<Enemy>` | 无 |
+| Thunderang | 进化 | `hit: Set<Enemy>` + `returnHit: Set<Enemy>` | `effects[]`（闪电链特效） |
+| Blazerang | 进化 | `hit: Set<Enemy>` + `returnHit: Set<Enemy>` + `trailDist: number` | `trails[]`（火焰轨迹，含 `hitCD: Map<Enemy, number>`） |
+
+### 一、Thunderang 序列化影响分析
+
+Thunderang 与基础 Boomerang 的投射物结构差异：
+
+| 字段 | Boomerang | Thunderang | 序列化处理 |
+|------|-----------|-----------|-----------|
+| `hit` | `Set<Enemy>` | `Set<Enemy>` | 不序列化（已有方案） |
+| `returnHit` | 无 | `Set<Enemy>` | 不序列化（同 hit 处理） |
+| `effects[]` | 无 | `{ x0, y0, x1, y1, t }[]` | 纯视觉效果，**不序列化** |
+
+Thunderang 的 `effects[]` 存储闪电链的视觉特效数据（起终点坐标 + 衰减计时器）。闪电链的**伤害逻辑**在 `triggerLightningChain()` 中即时执行（命中敌人时触发，直接调用 `e.hurt()`），damage 已经体现在 enemy 的 hp 变化上。因此 effects[] 纯粹是视觉数据，不影响游戏状态。
+
+**结论**：Thunderang 投射物序列化与基础 Boomerang 相同，只需序列化 `{ x, y, vx, vy, returning, dist }`。`returnHit: Set` 同 `hit: Set` 处理（不序列化）。`effects[]` 不序列化。
+
+### 二、Blazerang 序列化影响分析
+
+Blazerang 引入了回旋镖系最复杂的内部状态：
+
+#### 2.1 投射物额外字段
+
+| 字段 | 类型 | 序列化需求 |
+|------|------|-----------|
+| `trailDist` | `number` | 需要序列化 -- 控制火焰轨迹生成间隔，影响伤害输出 |
+| `returnHit` | `Set<Enemy>` | 不序列化（同 hit 处理） |
+
+`trailDist` 是一个累积距离计数器，每达到 `flame.trailInterval`（20px）时生成一个火焰轨迹点。如果丢失 `trailDist`，反序列化后的 Blazerang 投射物会从 0 开始重新累积，可能导致短暂的轨迹生成异常。但在联机 10Hz 快照频率下（100ms 间隔），投射物飞行 280px/s 时每帧移动约 28px，trailDist 误差最多一个 interval（20px），对视觉和伤害的影响可忽略。
+
+**权衡**：为保持序列化方案一致性（所有回旋镖投射物使用相同 snap 结构），`trailDist` 可不序列化。如果未来需要精确还原轨迹生成模式，可添加为可选字段。
+
+#### 2.2 trails[] 火焰轨迹
+
+```js
+// Blazerang.trails[] 结构
+{
+  x: number,        // 轨迹点坐标
+  y: number,
+  life: number,     // 剩余生命（秒）
+  hitCD: Map<Enemy, number>  // 每个敌人的伤害冷却（不可序列化）
+}
+```
+
+**关键问题**：`trails[]` 不是纯视觉特效，它会造成持续伤害（trailDps）。这意味着 `trails[]` 影响游戏逻辑，联机时需要同步。
+
+有三种处理方案：
+
+**方案 A：序列化 trails[]（不含 hitCD）**
+
+- 新增 `TrailSnap { x, y, life }` 格式
+- 每个 trail 约 30B，最多 20 个 trails = 600B
+- 反序列化时 `hitCD` 重建为空 Map（与 `hit: Set` 处理一致）
+- 优点：精确同步火焰轨迹状态
+- 缺点：增加快照体积约 600B
+
+**方案 B：不序列化 trails[]，由服务器端重建**
+
+- 服务器运行完整 Blazerang 逻辑，自动维护 trails[]
+- 客户端从服务器快照获取 trails 数据
+- 优点：客户端序列化逻辑不变
+- 缺点：需要服务器端运行 Blazerang 类（半授权模型中服务器本来就要运行）
+
+**方案 C：不序列化 trails[]，客户端本地近似重建**
+
+- 收到投射物快照后，根据投射物路径近似推算轨迹点
+- 优点：零额外带宽
+- 缺点：轨迹位置不精确，伤害计算可能有偏差
+
+**推荐方案 B**，理由：
+
+1. 半授权状态同步模型下，服务器端会运行完整武器逻辑（包括 Blazerang），服务器快照中包含精确的 trails 数据
+2. 序列化接口规格书定义的 `snapshot()` 函数主要用于单机阶段测试，联机后客户端不需要自己序列化 trails
+3. 如果联机前的单机测试需要 trails 同步验证，可用方案 A 作为过渡
+
+#### 2.3 trails[].hitCD: Map 处理
+
+`hitCD: Map<Enemy, number>` 与 `hit: Set<Enemy>` 同类问题 -- 包含对象引用，不可 JSON 化。
+
+处理方式：不序列化。联机时代理方案：
+- 服务器端 trails 使用 `hitCD: Map<netId, number>`（用 enemy ID 代替引用）
+- 客户端收到 trail snap 后重建空 Map（伤害冷却从 0 重新计算，100ms 内的偏差可接受）
+
+### 三、更新后的 BoomerangSnap 统一格式
+
+三种回旋镖武器共用投射物结构，统一为：
+
+```typescript
+interface BoomerangSnap {
+  id: string;                 // "bm_0", "bm_1", ...
+  weapon: string;             // "boomerang" | "thunderang" | "blazerang"
+  x: number; y: number;      // 浮点坐标 (2位小数)
+  vx: number; vy: number;    // 速度向量 (整数)
+  returning: boolean;         // 飞出 vs 飞回阶段
+  dist: number;               // 已飞行距离 (整数)
+  // 不序列化: hit, returnHit (Set<Enemy>)
+  // 不序列化: trailDist (blazerang, 可容忍误差)
+  // 不序列化: angle, rotAngle, trail (纯视觉)
+}
+
+// Blazerang 专用（联机后由服务器端快照包含）
+interface TrailSnap {
+  x: number; y: number;      // 整数像素坐标
+  life: number;               // 剩余生命 (秒, 1位小数)
+  // 不序列化: hitCD (Map<Enemy, number>)
+}
+```
+
+### 四、对 Drive #20 方案的修正
+
+Drive #20 提出的 snapshot() 扩展代码（15行）仍有效，但需增加 `weapon` 字段标识武器类型：
+
+```js
+// snapshot() 中 bullets 映射后追加 -- 修正版
+const boomerangWeapons = game.player.weapons.filter(
+  w => w.name === 'boomerang' || w.name === 'thunderang' || w.name === 'blazerang'
+);
+const boomerangBullets = boomerangWeapons.flatMap(w =>
+  w.projectiles.map((p, i) => ({
+    id: `bm_${w.name}_${i}`,
+    weapon: w.name,
+    x: Math.round(p.x * 100) / 100,
+    y: Math.round(p.y * 100) / 100,
+    vx: Math.round(p.vx),
+    vy: Math.round(p.vy),
+    returning: p.returning,
+    dist: Math.round(p.dist),
+  }))
+);
+result.bullets.push(...boomerangBullets);
+```
+
+### 五、快照大小更新
+
+| 新增组件 | 数量 | 单条大小 | 小计 |
+|---------|------|---------|------|
+| BoomerangSnap（Lv3 基础） | 最多 3 个同时飞行 | ~80B | 240B |
+| BoomerangSnap（Thunderang） | 最多 4 个同时飞行 | ~90B | 360B |
+| BoomerangSnap（Blazerang） | 最多 3 个同时飞行 | ~90B | 270B |
+| TrailSnap（Blazerang, 联机后） | 最多 20 个 | ~30B | 600B |
+
+最坏情况（同一玩家同时拥有 Thunderang + Blazerang，但实际不可能同时拥有两个进化武器）：
+- 实际最大：基础 Boomerang + 1 个进化 = 最多 7 个投射物 = ~630B
+- 含 trails = ~1230B
+
+总快照大小从 ~6KB 增加到 ~6.6KB（含 trails 最坏情况），仍在带宽预算内（60KB/s 下行）。
+
+### 六、对其他规格书的影响
+
+| 规格书 | 影响 | 说明 |
+|--------|------|------|
+| 序列化接口规格书 | 需更新：BoomerangSnap 新增 `weapon` 字段 | Drive #20 方案需修正 |
+| 序列化接口规格书 | 需新增：TrailSnap 格式（联机阶段） | Blazerang 火焰轨迹同步 |
+| 网络协议规格书 | BulletSnap 新增可选字段 `returning`/`dist`/`weapon` | 与 Drive #20 一致，额外增加 `weapon` |
+| Player 拆分方案 | 无影响 | 武器投射物管理与 Player 架构无关 |
+| 联机架构规格书 | 无影响 | 半授权模型不受新武器影响 |
+
+### 七、阻塞状态复查（连续第 9 次）
+
+| 后端产出物 | 状态 | 前端依赖 |
+|-----------|------|---------|
+| 联机技术调研报告 | 完成 | 无 |
+| 联机架构设计规格书 | 完成 | 无 |
+| 网络协议详细规格书 | 完成 | 无 |
+| 联机前置任务清单 | 完成 | 无（已交付前端参考） |
+| 序列化接口规格书 | **需更新（Boomerang/Thunderang/Blazerang + TrailSnap）** | 前端评审 + 实现 |
+| Player 拆分方案 | 设计完成 | 前端评审 + 实现 |
+| 服务器 MVP 原型 | 评估完成 | 依赖上述两项前端实现 |
+
+前端当前版本 v1.5.0，本轮完成了 Boomerang 基础武器 + Thunderang/Blazerang 进化武器代码实现。Player 拆分仍未排入前端迭代计划。
+
+### 八、WeaponSnap 格式验证
+
+当前序列化规格书的 `WeaponSnap` 接口：
+
+```typescript
+interface WeaponSnap {
+  name: string;     // "holywater" | "knife" | ... | "flamebible"
+  level: number;    // 1-3 (进化武器为 1)
+  timer: number;    // 武器内部计时器 (2位小数)
+}
+```
+
+v1.5.0 新增了 3 个武器名：`boomerang`、`thunderang`、`blazerang`。`name` 字段为自由字符串，无需结构变更。Thunderang/Blazerang 的 `level` 固定为 1（进化武器 maxLevel=1），与现有进化武器一致。`WeaponSnap` 格式无需修改。
+
+### 决策记录
+
+- Drive #20 中"进化武器 Thunderang/Blazerang 尚未实现"的判断已过时，v1.5.0 已完整实现
+- Thunderang 的 `effects[]` 是纯视觉数据（闪电链特效），不序列化；闪电链伤害已反映在 enemy.hp 变化中
+- Blazerang 的 `trails[]` 影响游戏逻辑（持续伤害），推荐联机后由服务器端快照包含，单机序列化暂不处理
+- 三种回旋镖共用统一 `BoomerangSnap` 格式，通过 `weapon` 字段区分类型
+- `TrailSnap` 作为联机阶段的扩展，不纳入当前单机序列化接口规格书
+- 连续第 9 次阻塞确认。联机前置任务清单仍然有效，等待前端排入计划
 
 ## 2026-04-06 -- Drive #20: 回旋镖武器对联机序列化的影响评估
 
