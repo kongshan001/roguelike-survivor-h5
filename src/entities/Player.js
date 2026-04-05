@@ -41,10 +41,13 @@ export class Player {
     this._dashTimer = 0;
     this._dashDir = { x: 0, y: 0 };
     this._afterimages = [];
-
     // Synergy system
     this.activeSynergies = new Set();
     this._isMoving = false;
+
+    // Lucky Coin passive fields
+    this.critDmgBonus = 0;
+    this.goldDropBonus = 0;
 
     // Quest tracking
     this._damageTaken = 0;

@@ -467,21 +467,48 @@ function loop(time) {
           screenShake(shakeType, window.game);
         }
         const comboGold = window.game.player.comboGold();
-        const gemVal = e.isBoss ? 50 : (e.type === 'skeleton' ? 3 : e.type === 'ghost' ? 2 : e.type === 'bat' ? 1 : e.type === 'elite_skeleton' ? 5 : e.type === 'splitter_small' ? 1 : 2);
+        const gemVal = e.isBoss? 50 : (e.type === 'skeleton' ? 3 : e.type === 'ghost' ? 2 : e.type === 'bat' ? 1 : e.type === 'elite_skeleton' ? 5 : e.type === 'splitter_small' ? 1 : 2);
         const goldFromGem = CFG.GOLD.gemToGold ? gemVal : 0;
-        window.game.player.gold += CFG.GOLD.perKill + comboGold + goldFromGem;
+        // Apply goldDropBonus from lucky coin passive
+        const goldMul = 1 + (window.game.player.goldDropBonus || 0);
+        let goldEarned = CFG.GOLD.perKill + comboGold + Math.ceil(goldFromGem * goldMul);
+        // apply crit_luckycoin synergy: crit kills double gold
+        if (e._lastCrit && window.game.player.hasSynergy('crit_luckycoin')) {
+          goldEarned *= 2;
+        }
+        window.game.player.gold += goldEarned;
         SFX.play('kill');
         window.game.dmgTexts.push({ x: e.x, y: e.y - 10, text: '💀', life: 0.8 });
+        // Synergy: firestaff_luckycoin — burned enemies drop extra gem value
+        let gemValExtra = 0;
+        if (e._burn && e._burn.t > 0 && window.game.player.hasSynergy('firestaff_luckycoin')) {
+          gemValExtra = CFG.SYNERGIES.firestaff_luckycoin.weaponBonus.burnGemBonus;
+        }
         // Drop gems
-        const val = gemVal;
+        let gemValFinal = gemVal + gemValExtra;
+        // Mark frozen status for gems from frostaura_luckycoin synergy
+        const frozenKilled = !!(e._frozen && e._frozen > 0);
         const count = e.isBoss ? 8 : 1;
         for (let g = 0; g < count; g++) {
-          window.game.gems.push(new Gem(e.x + rand(-10, 10), e.y + rand(-10, 10), val / count | 0 || 1));
+          const newGem = new Gem(e.x + rand(-10, 10), e.y + rand(-10, 10), gemValFinal / count | 0 || 1);
+          newGem._fromFrozen = frozenKilled;
+          if (frozenKilled && window.game.player.hasSynergy('frostaura_luckycoin')) {
+            newGem._frozenPullBonus = CFG.SYNERGIES.frostaura_luckycoin.weaponBonus.frozenGemPullBonus;
+          }
+          window.game.gems.push(newGem);
         }
         // Synergy: magnet_crit — crit kills drop bonus gem
         if (e._lastCrit && window.game.player.hasSynergy('magnet_crit')) {
           const bv = CFG.SYNERGIES.magnet_crit.bonusGemValue;
           window.game.gems.push(new Gem(e.x + rand(-8, 8), e.y + rand(-8, 8), bv));
+        }
+        // Synergy: holywater_luckycoin — holy water kills drop extra gold
+        if (window.game.player.hasSynergy('holywater_luckycoin')) {
+          const bonus = CFG.SYNERGIES.holywater_luckycoin.weaponBonus.killGoldBonus;
+          const hasHolyWater = window.game.player.weapons.some(w => w.name === 'holywater' || w.name === 'thunderholywater');
+          if (hasHolyWater) {
+            window.game.player.gold += bonus;
+          }
         }
         // Synergy: crit_boots — crit spawns knife projectile
         if (e._lastCrit && window.game.player.hasSynergy('crit_boots')) {
@@ -592,11 +619,15 @@ function loop(time) {
       const dInv = ds > 0 ? 1 / Math.sqrt(ds) : 0;
       const nx = dx * dInv, ny = dy * dInv;
       if (ds < PR2) {
+        // frostaura_luckycoin: gems from frozen enemies have extended pull range
+        let pullRange = PR;
+        if (g._frozenPullBonus) pullRange += g._frozenPullBonus;
         g.x += nx * CFG.GEM_FLY_SPEED * dt;
         g.y += ny * CFG.GEM_FLY_SPEED * dt;
         dx = _px - g.x; dy = _py - g.y;
         ds = dx * dx + dy * dy;
-        if (ds < 144) { // 12*12
+        const pullRangeSq = pullRange * pullRange;
+        if (ds < pullRangeSq) { // pullRange*pullRange
           const comboBonus = window.game.player.comboExpBonus();
           if (window.game.player.addExp(Math.ceil(g.value * comboBonus))) {
             SFX.play('levelup');

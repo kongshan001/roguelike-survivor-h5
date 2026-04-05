@@ -40,6 +40,7 @@ export function generateUpgrades(player) {
           if (key === 'crit') player.critChance = (player.critChance || 0) + 0.08;
           if (key === 'maxhp') { player.maxHp += 2; player.hp = Math.min(player.hp + 2, player.maxHp); }
           if (key === 'regen') { player._regenTimer = [5, 4, 3][(player.passives[key] || 1) - 1] || 3; }
+          if (key === 'luckycoin') { player.critDmgBonus += CFG.PASSIVES.luckycoin.critDmgBonus; player.goldDropBonus += CFG.PASSIVES.luckycoin.goldDropBonus; }
         } });
     }
   }

@@ -1,6 +1,7 @@
 // ===== Weapon Classes & Registry =====
 import { CFG } from '../core/config.js';
 import { V, rand, randInt, dist } from '../core/math.js';
+import { playerCrits } from '../audio/sfx.js';
 
 // --- Base Weapon ---
 class Weapon {
@@ -915,17 +916,34 @@ export class Boomerang extends Weapon {
         // Check max distance
         if (p.dist >= data.maxDist) { p.returning = true; }
         // Check enemies
+        const bonus = this.owner.getWeaponBonus ? this.owner.getWeaponBonus('boomerang') : {};
         for (const e of enemies) {
           if (e.hp <= 0 || p.hit.has(e)) continue;
           if (Math.abs(p.x - e.x) < (8 + e.w / 2) && Math.abs(p.y - e.y) < (8 + e.h / 2)) {
-            e.hurt(this.applyDmg(data.dmg));
+            // Synergy: boomerang_crit — boomerang can crit
+            const hasCritSynergy = bonus.canCrit;
+            let isCrit = false;
+            if (hasCritSynergy && Math.random() < (this.owner.critChance || 0)) isCrit = true;
+            e.hurt(this.applyDmg(data.dmg), isCrit);
             p.hit.add(e);
             if (data.pierce > 0 && p.hit.size <= data.pierce) continue;
             if (!data.pierce) { p.returning = true; break; }
           }
         }
+        // Synergy: boomerang_magnet — flight path pulls gems
+        if (this.owner.hasSynergy('boomerang_magnet') && window.game && window.game.gems) {
+          const pullRange = CFG.SYNERGIES.boomerang_magnet.weaponBonus.flightPullRange;
+          for (const gem of window.game.gems) {
+            const gdx = p.x - gem.x, gdy = p.y - gem.y;
+            const gds = gdx * gdx + gdy * gdy;
+            if (gds < pullRange * pullRange) {
+              const gInv = 1 / Math.sqrt(gds);
+              gem.x -= gdx * gInv * 60 * dt;
+              gem.y -= gdy * gInv * 60* dt;
+            }
+          }
+        }
       } else {
-        // Returning: fly back to player
         const dx = this.owner.x - p.x, dy = this.owner.y - p.y;
         const d = Math.sqrt(dx * dx + dy * dy);
         if (d < 15) {

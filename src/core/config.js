@@ -54,7 +54,9 @@ export const CFG = {
     magnet:     { name:'磁铁',   icon:'🧲', desc:'经验获取+30%', maxStack:3 },
     crit:       { name:'暴击戒指', icon:'💍', desc:'暴击率+8%', maxStack:3 },
     maxhp:      { name:'生命结晶', icon:'❤️', desc:'最大HP+2', maxStack:3 },
-    regen:      { name:'再生护符', icon:'♻️', desc:'每5秒回复1HP', maxStack:3 }
+    regen:      { name:'再生护符', icon:'♻️', desc:'每5秒回复1HP', maxStack:3 },
+    luckycoin:  { name:'幸运硬币', icon:'🪙', desc:'暴击伤害+50%，金币+15%', maxStack:3,
+                  critDmgBonus: 0.5, goldDropBonus: 0.15 }
   },
   FOOD: {
     dropRate: 0.1, healAmount: 1, maxFood: 8, lifetime: 15, bossDropCount: 3,
@@ -170,7 +172,21 @@ export const CFG = {
     firestaff_armor: { name:'熔岩法杖', icon:'🌋', req:{weapon:'firestaff',passive:'armor'}, desc:'锥形范围+40px，点燃+1s',
       weaponBonus:{coneBonus:40,burnDurBonus:1} },
     frost_regen: { name:'极寒光环', icon:'❄️', req:{weapon:'frostaura',passive:'regen'}, desc:'冰冻概率+5%/s，冰冻+0.5s',
-      weaponBonus:{freezeBonus:0.05,freezeDurBonus:0.5} }
+      weaponBonus:{freezeBonus:0.05,freezeDurBonus:0.5} },
+    // Lucky coin synergies (Drive #23)
+    crit_luckycoin: { name:'命运赌徒', icon:'🎲', req:{passives:['crit','luckycoin']}, desc:'暴击时金币掉落翻倍',
+      critGoldDouble:true },
+    holywater_luckycoin: { name:'圣水炼金', icon:'🧪', req:{weapon:'holywater',passive:'luckycoin'}, desc:'圣水击杀额外掉落1金币',
+      weaponBonus:{killGoldBonus:1} },
+    firestaff_luckycoin: { name:'炼金烈焰', icon:'🔑', req:{weapon:'firestaff',passive:'luckycoin'}, desc:'点燃敌人宝石价值+1',
+      weaponBonus:{burnGemBonus:1} },
+    frostaura_luckycoin: { name:'冰霜拾荒', icon:'❄️', req:{weapon:'frostaura',passive:'luckycoin'}, desc:'冰冻敌人宝石吸引范围+30px',
+      weaponBonus:{frozenGemPullBonus:30} },
+    // Boomerang synergies (Drive #23)
+    boomerang_magnet: { name:'磁力回旋', icon:'🪃🧲', req:{weapon:'boomerang',passive:'magnet'}, desc:'回旋镖飞行路径吸引宝石',
+      weaponBonus:{flightPullRange:30} },
+    boomerang_crit: { name:'致命回旋', icon:'🪃💍', req:{weapon:'boomerang',passive:'crit'}, desc:'回旋镖可暴击',
+      weaponBonus:{canCrit:true,critSizeBonus:1.2,critPierceBonus:1} }
   },
   SHOP: {
     soulFragmentRate: 0.3,
