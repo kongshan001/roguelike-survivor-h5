@@ -2,6 +2,15 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [1.2.1] - 2026-04-04
+
+### QA
+- Drive #12 回归测试 14/14 全绿
+- 新进化路线 FrostKnife + FlameBible 验证通过
+- CFG.EVOLUTIONS 扩展至6条路线，全部集成确认
+- JS 语法检查通过（config.js / registry.js / game.js / main.js）
+- 无新缺陷引入
+
 ## [1.0.0] - 2026-04-04
 
 ### 架构重构：单HTML文件 → ES Module模块化

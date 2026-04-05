@@ -4,6 +4,108 @@
 
 ---
 
+## 2026-04-04 — Drive #12: 新进化路线 FrostKnife + FlameBible 回归测试
+
+### 测试结果：14/14 通过（全绿，耗时 5.0 分钟）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 14 PASS | 全部通过 | 新进化路线无回归 |
+
+### 验证项
+
+- **CFG.EVOLUTIONS 现有6条路线**（config.js 第32-39行）：
+  1. holywater + lightning -> thunderholywater
+  2. knife + firestaff -> fireknife
+  3. bible + holywater -> holydomain
+  4. frostaura + lightning -> blizzard
+  5. **knife + frostaura -> frostknife**（新增）
+  6. **bible + firestaff -> flamebible**（新增）
+- **WEAPON_CLASSES 包含 frostknife 和 flamebible**（registry.js 第854-856行）-- 确认
+- **FrostKnife 类**（registry.js 第682-724行）：
+  - 继承 Weapon 基类，maxLevel=1，count=5，dmg=2.5，pierce=2，cd=0.6
+  - 子弹附带减速属性：frostSlow=0.4，frostSlowDur=1.5
+  - 子弹附带冰冻属性：frostFreezeChance=0.05，frostFreezeDur=1
+  - update() 签名：`(dt, enemies, bullets, sfx)` -- 与 game.js 调用匹配（第494行）
+  - draw() 绘制冰晶尾迹+蓝色刀身（game.js 第718-734行）
+- **FlameBible 类**（registry.js 第727-841行）：
+  - 继承 Weapon 基类，maxLevel=1，radius=140，speed=4
+  - 持续DPS=5 + 燃烧DPS=3 + 燃烧持续2s
+  - 火焰脉冲：每3秒一次，pulseDmg=8，pulseRadius=100
+  - update() 签名：`(dt, enemies, sfx)` -- 与 game.js 调用匹配（第495行）
+  - draw() 绘制旋转火焰环+4页经文+火焰粒子+脉冲波效果
+- **game.js 集成确认**：
+  - import 行（第20行）包含 `FrostKnife, FlameBible`
+  - update 调用点（第494-495行）正确注册到武器更新循环
+  - 子弹碰撞处理（第504-522行）：`b.frostSlow` 属性减速/冰冻逻辑完整
+  - 子弹绘制（第718行）：冰霜飞刀子弹视觉渲染分支正确
+- **JS 语法检查通过**：
+  - config.js: {145/145} (0/0) [29/29] OK
+  - registry.js: {281/281} (700/700) [25/25] OK
+  - game.js: {178/178} (473/473) [32/32] OK
+  - main.js: {0/0} (0/0) [0/0] OK
+- E2E 测试 14/14 全绿
+
+### 新增缺陷
+
+无新缺陷引入。
+
+### 里程碑
+
+- **进化系统扩展至6条路线**：所有6种基础武器的组合进化全部覆盖
+- **冰霜飞刀**：首把带控场效果的远程武器进化（减速+冰冻）
+- **烈焰经文**：首种范围持续灼烧+脉冲AOE进化武器
+
+---
+
+## 2026-04-05 — Drive #11: weaponDmgMul集成+BUG-009修复确认 回归测试
+
+### 测试结果：14/14 通过（全绿，耗时 4.5 分钟）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 14 PASS | 全部通过 | weaponDmgMul集成无回归，BUG-009修复确认 |
+
+### 验证项
+
+- **weaponDmgMul 集成确认**：
+  - `Weapon.applyDmg(base)` 基类方法统一应用伤害倍率：`base * (window.game.weaponDmgMul || 1)` -- 代码审查确认
+  - `game.js` 第196行：`weaponDmgMul` 从 shopData 正确初始化（含 0 级 fallback 为 1） -- 代码审查确认
+  - 19处 `applyDmg()` 调用覆盖全部武器伤害计算点：
+    - HolyWater: dt持续伤害 (line 29)
+    - Knife: 子弹伤害 (line 79)
+    - Lightning: 初始目标+链式递减50% (line 108, 121)
+    - Bible: 碰撞伤害 (line 166)
+    - FireStaff: dps+burn (line 228, 230)
+    - FrostAura: dps (line 303)
+    - HolyDomain: orbDps+pulseDmg (line 365, 644)
+    - ThunderHolyWater: 闪电链 (line 385, 397)
+    - Blizzard: 冰晶弹幕 (line 413)
+    - FireKnife: 子弹+燃烧 (line 603, 604)
+    - ThunderWater: 水球伤害+闪电链 (line 497, 519, 531)
+  - crit_boots 协同飞刀也正确应用 dmgMul（game.js 第459行）-- 代码审查确认
+- **BUG-009 修复确认**：
+  - `src/core/sprite-cache.js` 引用已完全移除 -- grep 搜索 `sprite-cache` 和 `initSpriteCache` 均返回 0 匹配
+  - 模块加载链正常：14/14 E2E 测试全绿
+  - `window.startGame` / `window.pickChar` / `window.pickDiff` 正常注册（间接通过全部流程测试验证）
+- JS 语法检查：5个核心文件括号平衡全部通过
+  - game.js: {174/174} (448/448) [32/32]
+  - registry.js: {228/228} (570/570) [21/21]
+  - config.js: {141/141} (0/0) [29/29]
+  - spawner.js: {7/7} (6/6) [6/6]
+  - upgrade-panel.js: {16/16} (23/23) [1/1]
+- `docs/team/qa-research.md` 存在，内容完整（7个方向、可落地方案排序）
+
+### 缺陷状态更新
+
+- **BUG-009** 状态从"待处理"更新为"已修复"
+
+### 新增缺陷
+
+无新缺陷引入。
+
+---
+
 ## 2026-04-05 — Drive #10: 出兵节奏加速+AUTO挂机 回归测试
 
 ### 测试结果：1/14 通过（13 FAILED，Critical 回归）
@@ -219,7 +321,7 @@
 
 | ID | 严重度 | 模块 | 描述 | 状态 | 指派 |
 |----|--------|------|------|------|------|
-| **BUG-009** | **Critical** | 模块加载 | `src/core/sprite-cache.js` 缺失，游戏无法启动 | **待处理** | **frontend** |
+| **BUG-009** | **Critical** | 模块加载 | `src/core/sprite-cache.js` 缺失，游戏无法启动 | **已修复** v1.2.0 | **frontend** |
 | BUG-005 | Low | 武器-圣水 | 圣水Lv1伤害极低 | ✅ 已修复 v0.3.1 | frontend |
 | BUG-006 | Low | 道具-磁铁 | 全图吸引后磁铁道具价值大降 | ✅ 已修复 v0.3.1 | designer |
 | BUG-007 | Low | UI-结算 | 结算画面金币用途不明确 | ✅ 已修复 v0.6.0 | designer/frontend |
