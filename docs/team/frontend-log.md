@@ -41,10 +41,39 @@
 | P1 | ~~进化路线扩展(+2条: 冰霜飞刀+烈焰经文)~~ | **✅ 已完成 Drive #13** |
 | P1 | ~~第8种敌人：分裂虫（本体+分裂子体，死亡分裂机制）~~ | **✅ 已完成 Drive #14** |
 | P0 | ~~节奏平衡调优（EXP加速+金币经济+生成器过渡）~~ | **✅ 已完成 Drive #16** |
+| P0 | ~~回旋镖系列代码重构（findNearestEnemy提取到基类）~~ | **✅ 已完成 Drive #22** |
 | P1 | 网格空间哈希碰撞检测（敌人>80时启用） | 待启动 |
 | P1 | 固定时间步游戏循环（Timestep Fixing） | 待启动 |
 | P1 | ~~成就系统UI和逻辑实现~~ | **✅ 已完成 Drive #17** |
 | P2 | ~~Ban/Reroll升级选项（🔄 换一批按钮，免费重抽1次）~~ | **✅ 已完成 Drive #6** |
+
+---
+
+## 2026-04-06 -- Drive #22: 回旋镖系列代码重构 + 綈灭P0 bug评估
+
+### 成果
+
+- **BUG-010 验证**：QA报告 `all_evolutions` 成就 parts 缺少 evo_thunderang/evo_blazerang -- 经检查 config.js 第242-251行，parts 数组已包含全部8种进化武器， 该bug在 Drive #21 中已修复， 无需额外处理.
+- **代码重构: findNearestEnemy 提取到 Weapon 基类**
+  - Boomerang/Thunderang/Blazerang 三个类各自有完全相同的 `findNearestEnemy(enemies, fromX, fromY, maxDist)` 方法（各9行）
+  - 提取为 Weapon 基类方法， 消除3处重复（共减少18行冗余代码）
+  - 三个子类各自删除重复方法. 琜索范围使用 distSq 比较（避免 sqrt）.
+- **E2E 测试验证**: 14/14 全部通过，零回归（4.5分钟）
+
+### 变更文件
+| 文件 | 变更 |
+|------|------|
+| `src/weapons/registry.js` | Weapon 基类 +9行 findNearestEnemy, Boomerang/Thunderang/Blazerang 各删除9行重复方法 |
+
+### 设计决策
+- **提取到基类而非工具函数**: findNearestEnemy 是武器的通用能力（搜索最近敌人），放在 Weapon 基类比独立的工具函数更符合面向对象设计. 未来其他需要追踪最近敌人的武器也可直接复用.
+- **保持参数签名不变**: `(enemies, fromX, fromY, maxDist)` -- 内部使用 distSq 比较无需调用者感知.
+
+### 技术债务
+- `crit_boots` 协同飞刀伤害基准使用 `e.dmg`（敌人伤害属性）而非固定基础伤害值 -- 这意味着对僵尸造成0.5伤害，对Boss造成1伤害. 这是有意设计（按敌人强度缩放），但与飞刀武器的主题（玩家武器伤害）略有偏差. 记录为低优先级设计选择.
+- 成就面板未做分类过滤/排序（25个非隐藏成就平铺显示）
+- 缺少成就完成时的弹窗通知（仅在结算画面显示）
+- 商店面板效果描述仍显示当前等级效果（未显示下一级预览）
 
 ---
 

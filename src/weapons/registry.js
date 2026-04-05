@@ -8,6 +8,16 @@ class Weapon {
   get maxLevel() { return 3; }
   /** Apply shop weaponDmg upgrade multiplier to base damage */
   applyDmg(base) { return base * (window.game && window.game.weaponDmgMul || 1); }
+  /** Find nearest alive enemy within maxDist (uses distSq, no sqrt) */
+  findNearestEnemy(enemies, fromX, fromY, maxDist) {
+    let best = null, bestD = maxDist * maxDist;
+    for (const e of enemies) {
+      if (e.hp <= 0) continue;
+      const d = (e.x - fromX) ** 2 + (e.y - fromY) ** 2;
+      if (d < bestD) { bestD = d; best = e; }
+    }
+    return best;
+  }
 }
 
 // --- HolyWater ---
@@ -977,15 +987,6 @@ export class Thunderang extends Weapon {
     this.effects = [];
   }
   get maxLevel() { return 1; }
-  findNearestEnemy(enemies, fromX, fromY, maxDist) {
-    let best = null, bestD = maxDist * maxDist;
-    for (const e of enemies) {
-      if (e.hp <= 0) continue;
-      const d = (e.x - fromX) ** 2 + (e.y - fromY) ** 2;
-      if (d < bestD) { bestD = d; best = e; }
-    }
-    return best;
-  }
   triggerLightningChain(sourceX, sourceY, enemies, excludeHit) {
     const cfg = CFG.BOOMERANG.thunderang.lightning;
     if (Math.random() > cfg.chance) return;
@@ -1156,15 +1157,6 @@ export class Blazerang extends Weapon {
     this.trails = [];
   }
   get maxLevel() { return 1; }
-  findNearestEnemy(enemies, fromX, fromY, maxDist) {
-    let best = null, bestD = maxDist * maxDist;
-    for (const e of enemies) {
-      if (e.hp <= 0) continue;
-      const d = (e.x - fromX) ** 2 + (e.y - fromY) ** 2;
-      if (d < bestD) { bestD = d; best = e; }
-    }
-    return best;
-  }
   update(dt, enemies) {
     const data = CFG.BOOMERANG.blazerang;
     const flame = data.flame;
