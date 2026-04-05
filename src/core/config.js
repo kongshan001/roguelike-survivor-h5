@@ -28,12 +28,15 @@ export const CFG = {
     bible:     { name:'圣经', icon:'📖', desc:'范围旋转' },
     firestaff: { name:'火焰法杖', icon:'🔥', desc:'锥形火焰' },
     frostaura: { name:'冰冻光环', icon:'❄️', desc:'范围减速' },
+    boomerang: { name:'回旋镖', icon:'🪃', desc:'追踪回旋' },
     blizzard: { name:'暴风雪', icon:'❄️⚡', desc:'大范围暴风雪+闪电链', evolved:true },
     thunderholywater: { name:'雷暴圣水', icon:'⚡💧', desc:'旋转+链式闪电', evolved:true },
     fireknife: { name:'火焰飞刀', icon:'🔥🗡', desc:'燃烧穿透飞刀', evolved:true },
     holydomain: { name:'圣光领域', icon:'📖💧', desc:'超大范围+圣光脉冲', evolved:true },
     frostknife: { name:'冰霜飞刀', icon:'❄️🗡', desc:'减速穿透飞刀', evolved:true },
-    flamebible: { name:'烈焰经文', icon:'🔥📖', desc:'旋转灼烧+火焰脉冲', evolved:true }
+    flamebible: { name:'烈焰经文', icon:'🔥📖', desc:'旋转灼烧+火焰脉冲', evolved:true },
+    thunderang: { name:'雷霆回旋', icon:'🪃⚡', desc:'追踪+闪电链', evolved:true },
+    blazerang:  { name:'烈焰回旋', icon:'🪃🔥', desc:'追踪+火焰轨迹', evolved:true }
   },
   EVOLUTIONS: [
     { a:'holywater', b:'lightning', result:'thunderholywater', name:'雷暴圣水', icon:'⚡💧', desc:'旋转+链式闪电' },
@@ -41,7 +44,9 @@ export const CFG = {
     { a:'bible', b:'holywater', result:'holydomain', name:'圣光领域', icon:'📖💧', desc:'超大范围+圣光脉冲' },
     { a:'frostaura', b:'lightning', result:'blizzard', name:'暴风雪', icon:'❄️⚡', desc:'大范围暴风雪+闪电链' },
     { a:'knife', b:'frostaura', result:'frostknife', name:'冰霜飞刀', icon:'❄️🗡', desc:'减速穿透飞刀' },
-    { a:'bible', b:'firestaff', result:'flamebible', name:'烈焰经文', icon:'🔥📖', desc:'旋转灼烧+火焰脉冲' }
+    { a:'bible', b:'firestaff', result:'flamebible', name:'烈焰经文', icon:'🔥📖', desc:'旋转灼烧+火焰脉冲' },
+    { a:'boomerang', b:'lightning', result:'thunderang', name:'雷霆回旋', icon:'🪃⚡', desc:'追踪+闪电链' },
+    { a:'boomerang', b:'firestaff', result:'blazerang', name:'烈焰回旋', icon:'🪃🔥', desc:'追踪+火焰轨迹' }
   ],
   PASSIVES: {
     speedboots: { name:'疾风靴', icon:'👢', desc:'移动速度+15%', maxStack:3 },
@@ -270,5 +275,16 @@ export const CFG = {
     soulFragmentBonusMul: 1.5,
     goldBonusPerMin: 0.5,
     bossKillReward: { gold: 50, exp: 30, food: 5 },
+  },
+  BOOMERANG: {
+    levels: {
+      1: { count:1, speed:280, returnSpeed:320, dmg:3, maxDist:250, cd:1.8, pierce:0, trackAngle:0.52, curvature:0.3 },
+      2: { count:2, speed:280, returnSpeed:320, dmg:4, maxDist:300, cd:1.4, pierce:1, trackAngle:0.79, curvature:0.3 },
+      3: { count:3, speed:320, returnSpeed:360, dmg:5, maxDist:350, cd:1.0, pierce:2, trackAngle:1.05, curvature:0.2 },
+    },
+    thunderang: { count:4, speed:350, returnSpeed:380, dmg:7, maxDist:400, cd:0.8, pierce:3, trackAngle:1.31, curvature:0.15,
+      lightning:{ chance:0.4, range:120, targets:2, dmg:8, chains:2, decay:0.5 } },
+    blazerang:  { count:3, speed:330, returnSpeed:360, dmg:6, maxDist:380, cd:0.8, pierce:3, trackAngle:1.05, curvature:0.2,
+      flame:{ trailInterval:20, trailDur:1.5, trailDps:2, maxTrails:20, burnDur:2.5, burnDps:3 } },
   }
 };

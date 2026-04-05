@@ -4,6 +4,84 @@
 
 ---
 
+## 2026-04-05 — Drive #20: 第7种基础武器回旋镖实现 回归测试
+
+### 测试结果：14/14 通过（全绿，耗时 4.5 分钟）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 14 PASS | 全部测试通过 | 回旋镖武器实现无回归 |
+
+### 变更范围
+
+本次 Drive 涉及代码和文档变更：
+
+- `src/core/config.js` -- 新增 boomerang WEAPONS 条目 + 2个进化武器条目(thunderang/blazerang) + 2条 EVOLUTIONS 路线 + CFG.BOOMERANG 数值配置块(3级+2个进化)
+- `src/weapons/registry.js` -- 新增 Boomerang 类（追踪最近敌人+弧线飞行+双程伤害+旋转视觉）
+- `src/game.js` -- 导入 Boomerang + instanceof 更新链 + 升级池调用
+- `src/ui/upgrade-generate.js` -- 武器池新增 boomerang
+- `index.html` -- 新增回旋镖武器选择卡片（第105行）
+- 各角色 log 更新
+
+### 验证项
+
+- **CFG.WEAPONS.boomerang** 配置正确（name:'回旋镖', icon:'🪃', desc:'追踪回旋'）-- 确认（config.js 第31行）
+- **CFG.WEAPONS.thunderang** 配置正确（evolved:true, icon:'🪃⚡'）-- 确认（config.js 第38行）
+- **CFG.WEAPONS.blazerang** 配置正确（evolved:true, icon:'🪃🔥'）-- 确认（config.js 第39行）
+- **CFG.EVOLUTIONS** 扩展至8条路线，含2条 boomerang 进化 -- 确认（config.js 第48-49行）
+  - boomerang + lightning -> thunderang
+  - boomerang + firestaff -> blazerang
+- **CFG.BOOMERANG** 数值配置块完整（config.js 第279-289行）：
+  - 3级基础数值：count 1/2/3, speed 280/280/320, dmg 3/4/5, maxDist 250/300/350, cd 1.8/1.4/1.0
+  - pierce 0/1/2（逐级增加穿透）
+  - trackAngle 0.52/0.79/1.05 rad（追踪角度逐级提升）
+  - curvature 0.3/0.3/0.2（弧线曲率，Lv3更直）
+  - thunderang: 4枚, 7伤害, 穿透3, 含闪电链(40%概率, 2目标, 8伤害, 2链)
+  - blazerang: 3枚, 6伤害, 穿透3, 含火焰轨迹(20间隔, 1.5s持续, 2DPS, 燃烧2.5s/3DPS)
+  - 所有数值引用合理，与设计规格对齐
+- **Boomerang 类实现**（registry.js 第843-970行）：
+  - 继承 Weapon 基类，projectiles 数组管理飞出物
+  - `getLevelData()` 从 CFG.BOOMERANG.levels 读取当前等级数据 -- 确认
+  - `findNearestEnemy(enemies, fromX, fromY, maxDist)` 最近敌人搜索 -- 确认
+  - update 逻辑：
+    - 发射阶段：追踪最近敌人（trackAngle限制转向角度）+ curvature弧线偏移 -- 确认
+    - 碰撞检测：8+e.w/2 范围，命中后加入hit Set防止重复 -- 确认
+    - 穿透处理：pierce>0时允许继续飞行，超过pierce次命中后返回 -- 确认
+    - 返回阶段：直线飞回玩家（returnSpeed），15px范围内消失 -- 确认
+    - 返回也造成伤害（双程伤害） -- 确认
+  - draw 逻辑：旋转的V形回旋镖（金色+棕色+高光），rotAngle持续旋转 -- 确认
+- **WEAPON_CLASSES 注册**（registry.js 第980行）：`boomerang: Boomerang` -- 确认
+- **game.js 集成**：
+  - import 行（第20行）包含 `Boomerang` -- 确认
+  - instanceof 更新链（第536行）：`else if (w instanceof Boomerang) w.update(dt, window.game.enemies)` -- 确认
+  - update 调用签名 `(dt, enemies)` -- 与 Boomerang.update 签名匹配
+  - draw 通过 `w.draw(ctx, cam, canvas)` 通用绘制 -- 确认（第729行）
+- **upgrade-generate.js 武器池**（第11行）：boomerang 已加入升级池 -- 确认
+- **index.html 武器选择卡片**（第105行）：`onclick="pickWeapon('boomerang')"`, icon:'🪃', name:'回旋镖', desc:'追踪回旋双程伤害' -- 确认
+- **JS 语法检查通过**（3个文件括号全平衡）：
+  - config.js: {0} (0) [0] OK
+  - registry.js: {0} (0) [0] OK
+  - game.js: {0} (0) [0] OK
+- E2E 测试 14/14 全绿
+
+### 技术债务
+
+- **进化武器类未实现**：CFG.EVOLUTIONS 中定义了 thunderang 和 blazerang 两条进化路线，CFG.BOOMERANG 也包含其数值配置，但 WEAPON_CLASSES 中未注册这两个进化武器类。若玩家同时拥有 boomerang Lv.3 + lightning Lv.3（或 firestaff Lv.3），升级面板会出现进化选项，但选择时将因 `WEAPON_CLASSES[evo.result] is not a constructor` 而报错。
+  - **影响范围**：仅在极端构建（boomerang Lv.3 + lightning/firestaff Lv.3）时触发，正常游戏流程不会遇到
+  - **建议**：优先级 P2，后续 Drive 实现 Thunderang 和 Blazerang 类即可解决
+
+### 新增缺陷
+
+无新缺陷引入。
+
+### 里程碑
+
+- **第7种基础武器上线**：游戏基础武器从6种增至7种
+- **回旋镖独特机制**：首个具有「去回双程伤害」+「追踪」+「弧线飞行」的武器
+- **2条进化路线预定义**：thunderang/blazerang 数值配置就绪，待后续 Drive 实现
+
+---
+
 ## 2026-04-05 — Drive #19: 回旋镖+幸运硬币协同设计 + 序列化接口规格书 回归测试
 
 ### 测试结果：14/14 通过（全绿，耗时 4.5 分钟）

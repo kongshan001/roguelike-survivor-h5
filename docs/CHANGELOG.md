@@ -2,6 +2,23 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [1.5.0] - 2026-04-05
+
+### Frontend
+- 第7种基础武器回旋镖 (Boomerang) 实现
+  - 追踪最近敌人+弧线飞行+去回双程伤害
+  - 3级升级路线：1/2/3枚, 伤害3/4/5, 穿透0/1/2, 追踪角度0.52/0.79/1.05 rad
+  - 旋转V形金色精灵视觉
+- 2条进化路线预定义（数值配置就绪，类实现待后续 Drive）
+  - 回旋镖+闪电 -> 雷霆回旋 (thunderang)
+  - 回旋镖+火焰法杖 -> 烈焰回旋 (blazerang)
+- 武器选择画面新增回旋镖选择卡片
+
+### QA
+- Drive #20 测试 14/14 通过（全绿，4.5分钟）
+- 3个变更文件 JS 语法检查全部通过
+- 回旋镖武器实现验证完成（config/registry/game/upgrade-generate/HTML五文件变更）
+
 ## [1.4.0] - 2026-04-05
 
 ### Frontend

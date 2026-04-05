@@ -17,7 +17,7 @@ import { WEAPON_CLASSES } from './weapons/registry.js';
 import {
   HolyWater, Knife, Lightning, Bible, FireStaff,
   FrostAura, Blizzard, ThunderHolyWater,
-  FireKnife, HolyDomain, FrostKnife, FlameBible,
+  FireKnife, HolyDomain, FrostKnife, FlameBible, Boomerang,
 } from './weapons/registry.js';
 import { drawHUD } from './ui/hud.js';
 import { showQuestPanel, hideQuestPanel } from './ui/quest-panel.js';
@@ -533,6 +533,7 @@ function loop(time) {
             else if (w instanceof HolyDomain) w.update(dt, window.game.enemies, (id) => SFX.play(id), pCrits);
             else if (w instanceof FrostKnife) w.update(dt, window.game.enemies, window.game.bullets, (id) => SFX.play(id));
             else if (w instanceof FlameBible) w.update(dt, window.game.enemies, (id) => SFX.play(id));
+            else if (w instanceof Boomerang) w.update(dt, window.game.enemies);
     }
     // Update bullets
     for (let i = window.game.bullets.length - 1; i >= 0; i--) {

@@ -8,7 +8,7 @@ export function generateUpgrades(player) {
   const pool = [];
   // New weapons
   const owned = new Set(player.weapons.map(w => w.name));
-  for (const name of ['holywater', 'knife', 'lightning', 'bible', 'firestaff', 'frostaura']) {
+  for (const name of ['holywater', 'knife', 'lightning', 'bible', 'firestaff', 'frostaura', 'boomerang']) {
     if (!owned.has(name)) {
       const wc = CFG.WEAPONS[name];
       pool.push({ type: 'weapon', icon: wc.icon, name: wc.name, desc: wc.desc,

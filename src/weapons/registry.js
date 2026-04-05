@@ -840,6 +840,135 @@ export class FlameBible extends Weapon {
   }
 }
 
+// --- Boomerang ---
+export class Boomerang extends Weapon {
+  constructor(owner) {
+    super('boomerang', owner);
+    this.projectiles = [];
+  }
+  getLevelData() {
+    return CFG.BOOMERANG.levels[this.level] || CFG.BOOMERANG.levels[1];
+  }
+  findNearestEnemy(enemies, fromX, fromY, maxDist) {
+    let best = null, bestD = maxDist * maxDist;
+    for (const e of enemies) {
+      if (e.hp <= 0) continue;
+      const d = (e.x - fromX) ** 2 + (e.y - fromY) ** 2;
+      if (d < bestD) { bestD = d; best = e; }
+    }
+    return best;
+  }
+  update(dt, enemies) {
+    const data = this.getLevelData();
+    this.timer -= dt;
+    if (this.timer <= 0) {
+      this.timer = data.cd;
+      const bonus = this.owner.getWeaponBonus ? this.owner.getWeaponBonus('boomerang') : {};
+      const count = data.count + (bonus.extraCount || 0);
+      for (let i = 0; i < count; i++) {
+        const target = this.findNearestEnemy(enemies, this.owner.x, this.owner.y, data.maxDist * 2);
+        let angle;
+        if (target) {
+          angle = Math.atan2(target.y - this.owner.y, target.x - this.owner.x);
+        } else {
+          angle = Math.random() * Math.PI * 2;
+        }
+        this.projectiles.push({
+          x: this.owner.x, y: this.owner.y,
+          vx: Math.cos(angle) * data.speed,
+          vy: Math.sin(angle) * data.speed,
+          returning: false,
+          dist: 0,
+          hit: new Set(),
+          angle: angle,
+          rotAngle: 0,
+          trail: [],
+        });
+      }
+    }
+    // Update projectiles
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
+      p.rotAngle += dt * 12;
+      if (!p.returning) {
+        // Outgoing: track nearest enemy
+        const trackRad = data.trackAngle * dt;
+        const tgt = this.findNearestEnemy(enemies, p.x, p.y, 200);
+        if (tgt) {
+          const desired = Math.atan2(tgt.y - p.y, tgt.x - p.x);
+          let diff = desired - Math.atan2(p.vy, p.vx);
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          const turn = Math.sign(diff) * Math.min(Math.abs(diff), trackRad);
+          const curAngle = Math.atan2(p.vy, p.vx) + turn;
+          const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+          p.vx = Math.cos(curAngle) * spd;
+          p.vy = Math.sin(curAngle) * spd;
+        }
+        // Add curvature offset (slight sideways drift)
+        const perpX = -p.vy * data.curvature * dt;
+        const perpY = p.vx * data.curvature * dt;
+        p.x += (p.vx + perpX) * dt;
+        p.y += (p.vy + perpY) * dt;
+        p.dist += Math.sqrt(p.vx * p.vx + p.vy * p.vy) * dt;
+        // Check max distance
+        if (p.dist >= data.maxDist) { p.returning = true; }
+        // Check enemies
+        for (const e of enemies) {
+          if (e.hp <= 0 || p.hit.has(e)) continue;
+          if (Math.abs(p.x - e.x) < (8 + e.w / 2) && Math.abs(p.y - e.y) < (8 + e.h / 2)) {
+            e.hurt(this.applyDmg(data.dmg));
+            p.hit.add(e);
+            if (data.pierce > 0 && p.hit.size <= data.pierce) continue;
+            if (!data.pierce) { p.returning = true; break; }
+          }
+        }
+      } else {
+        // Returning: fly back to player
+        const dx = this.owner.x - p.x, dy = this.owner.y - p.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < 15) {
+          this.projectiles.splice(i, 1); continue;
+        }
+        const retSpd = data.returnSpeed || data.speed * 1.15;
+        p.vx = dx / d * retSpd;
+        p.vy = dy / d * retSpd;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        // Return trip also damages enemies
+        for (const e of enemies) {
+          if (e.hp <= 0 || p.hit.has(e)) continue;
+          if (Math.abs(p.x - e.x) < (8 + e.w / 2) && Math.abs(p.y - e.y) < (8 + e.h / 2)) {
+            e.hurt(this.applyDmg(data.dmg));
+            p.hit.add(e);
+          }
+        }
+      }
+    }
+  }
+  draw(ctx, cam, canvas) {
+    for (const p of this.projectiles) {
+      const s = cam.w2s(p.x, p.y, canvas);
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(p.rotAngle);
+      // V-shape boomerang (12x6)
+      ctx.fillStyle = '#ffc107'; // gold
+      ctx.fillRect(-6, -1, 5, 2);
+      ctx.fillRect(1, -1, 5, 2);
+      ctx.fillRect(-6, -3, 2, 2);
+      ctx.fillRect(4, -3, 2, 2);
+      ctx.fillStyle = '#795548'; // wood brown
+      ctx.fillRect(-4, 0, 3, 1);
+      ctx.fillRect(1, 0, 3, 1);
+      ctx.fillStyle = '#fff8e1'; // highlight
+      ctx.fillRect(-3, -2, 1, 1);
+      ctx.fillRect(3, -2, 1, 1);
+      ctx.restore();
+    }
+  }
+}
+
 // ===== Weapon Registry =====
 export const WEAPON_CLASSES = {
   holywater: HolyWater,
@@ -848,6 +977,7 @@ export const WEAPON_CLASSES = {
   bible: Bible,
   firestaff: FireStaff,
   frostaura: FrostAura,
+  boomerang: Boomerang,
   thunderholywater: ThunderHolyWater,
   fireknife: FireKnife,
   holydomain: HolyDomain,
