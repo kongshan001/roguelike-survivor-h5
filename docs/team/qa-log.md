@@ -4,6 +4,99 @@
 
 ---
 
+## 2026-04-06 — Drive #22: findNearestEnemy 重构至 Weapon 基类 QA审查
+
+### 测试结果：14/14 通过（全绿，耗时 4.5 分钟）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 14 PASS | 全部测试通过 | findNearestEnemy 重构无回归 |
+
+### 变更范围
+
+本次 Drive 涉及前端重构：
+
+- `src/weapons/registry.js` -- `findNearestEnemy()` 方法从 Boomerang/Thunderang/Blazerang 三个子类提取到 Weapon 基类
+- 移除 Boomerang 中冗余的 `findNearestEnemy` 方法定义
+- Thunderang/Blazerang 原先已通过继承使用基类方法，本次重构确认无遗漏
+
+### 代码审查验证
+
+#### Weapon 基类 findNearestEnemy()（registry.js 第12-21行）
+
+- **方法签名**：`findNearestEnemy(enemies, fromX, fromY, maxDist)` -- 确认
+- **平方距离优化**：使用 `maxDist * maxDist` 作为阈值，`d = (e.x - fromX) ** 2 + (e.y - fromY) ** 2`，避免 sqrt -- 确认
+- **死亡敌人跳过**：`if (e.hp <= 0) continue` -- 确认
+- **返回值**：最近存活敌人或 null -- 确认
+
+#### Boomerang 继承验证（registry.js 第854-971行）
+
+- **第870行**：`this.findNearestEnemy(enemies, this.owner.x, this.owner.y, data.maxDist * 2)` -- 发射阶段寻找目标，继承自 Weapon 基类 -- 确认
+- **第897行**：`this.findNearestEnemy(enemies, p.x, p.y, 200)` -- 飞出阶段追踪最近敌人，继承自 Weapon 基类 -- 确认
+- **无本地 findNearestEnemy 定义** -- 确认冗余代码已移除
+
+#### Thunderang 继承验证（registry.js 第974-1141行）
+
+- **第1051行**：`this.findNearestEnemy(enemies, p.x, p.y, 200)` -- 飞出阶段追踪最近敌人，继承自 Weapon 基类 -- 确认
+- **triggerLightningChain() 方法（第981-1001行）**：使用内联搜索逻辑（chainHitSet 排除 + 平方距离），不使用 findNearestEnemy -- 合理，因为闪电链有独立的命中排除逻辑，与通用最近搜索语义不同
+- **无本地 findNearestEnemy 定义** -- 确认
+
+#### Blazerang 继承验证（registry.js 第1144-1322行）
+
+- **第1196行**：`this.findNearestEnemy(enemies, p.x, p.y, 200)` -- 飞出阶段追踪最近敌人，继承自 Weapon 基类 -- 确认
+- **无本地 findNearestEnemy 定义** -- 确认
+
+#### findNearestEnemy 引用汇总
+
+| 行号 | 类 | 调用上下文 | maxDist |
+|------|-----|-----------|---------|
+| 870 | Boomerang | 发射阶段寻找目标 | data.maxDist * 2 |
+| 897 | Boomerang | 飞出阶段追踪 | 200 |
+| 1051 | Thunderang | 飞出阶段追踪 | 200 |
+| 1196 | Blazerang | 飞出阶段追踪 | 200 |
+
+全部4处调用均通过 `this.findNearestEnemy()` 继承自 Weapon 基类，无子类覆盖或重复定义。
+
+#### game.js 集成验证
+
+- **import 行（第20-21行）**：`Boomerang, Thunderang, Blazerang` 已在 import 列表 -- 确认
+- **instanceof 更新链（第537-539行）**：
+  - `else if (w instanceof Boomerang) w.update(dt, window.game.enemies)` -- 确认
+  - `else if (w instanceof Thunderang) w.update(dt, window.game.enemies)` -- 确认
+  - `else if (w instanceof Blazerang) w.update(dt, window.game.enemies)` -- 确认
+- 重构仅涉及 Weapon 类内部方法位置变化，game.js 调用签名和集成方式未改变 -- 确认
+
+### JS 语法检查（3个文件全部通过）
+
+| 文件 | node --check |
+|------|-------------|
+| registry.js | OK |
+| game.js | OK |
+| config.js | OK |
+
+### 新增缺陷
+
+无新缺陷引入。
+
+### 技术债务更新
+
+- **BUG-010 仍待处理**：all_evolutions 成就 parts 仍缺少 evo_thunderang 和 evo_blazerang，需 designer 更新
+
+### 重构质量评估
+
+- **代码去重**：3个子类共享同一实现，消除了维护不一致风险
+- **方法签名一致**：4处调用点参数格式统一（enemies, x, y, maxDist）
+- **零回归**：E2E 测试 14/14 全绿，重构无副作用
+- **性能无变化**：基类方法使用平方距离比较，与原实现逻辑等价
+
+### 里程碑
+
+- **Weapon 基类完善**：findNearestEnemy 成为通用方法，未来新增武器可直接继承
+- **连续4个Drive零回归**：Drive #19, #20, #21, #22 均为 14/14 全绿
+- **重构无回归验证**：证明 E2E 测试套件能有效捕获继承链变更导致的回归
+
+---
+
 ## 2026-04-06 — Drive #21: Thunderang + Blazerang 进化武器实现 QA审查
 
 ### 测试结果：14/14 通过（全绿，耗时 4.5 分钟）

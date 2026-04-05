@@ -2,6 +2,17 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [1.6.1] - 2026-04-06
+
+### Frontend
+- findNearestEnemy() 方法从 Boomerang/Thunderang/Blazerang 提取到 Weapon 基类，消除代码重复
+
+### QA
+- Drive #22 测试 14/14 通过（全绿，4.5分钟）
+- 3个核心文件 JS 语法检查全部通过
+- 代码审查确认：4处调用点全部通过继承正确调用基类方法，无子类重复定义
+- 重构无回归
+
 ## [1.6.0] - 2026-04-06
 
 ### Frontend
