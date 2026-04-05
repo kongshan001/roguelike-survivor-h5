@@ -4,6 +4,68 @@
 
 ---
 
+## 2026-04-05 — Drive #13: 第8种敌人 Splitter 回归测试
+
+### 测试结果：14/14 通过（全绿，耗时 4.8 分钟）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 14 PASS | 全部通过 | Splitter敌人无回归 |
+
+### 验证项
+
+- **CFG.ENEMY_TYPES 包含 splitter 和 splitter_small**（config.js 第17-18行）：
+  - `splitter`: w:16, h:16, hp:4, speed:50, dmg:1, color:'#00897b', splitter:true
+  - `splitter_small`: w:8, h:8, hp:1, speed:70, dmg:1, color:'#4db6ac', isChild:true
+  - 两个类型定义完整，属性合理（本体16px/4HP，小体8px/1HP/更快速度70）
+- **生成时机确认**（spawner.js 第6-8行）：
+  - 180-240s: types包含'splitter' -- 确认
+  - 240-270s: types包含'splitter' -- 确认
+  - 270s+: types包含'splitter','splitter' -- 权重翻倍确认
+  - splitter 仅在180s后混入生成池（与180s后期阶段一致）
+- **分裂逻辑确认**（game.js 第478-489行）：
+  - 条件：`e.splitter && !e.isChild` -- 仅本体可分裂，子体不可递归
+  - 分裂数：2个子体（for循环 s<2）
+  - 位置偏移：左右各12px（`(s===0?-1:1)*12`）
+  - 子体类型：`new Enemy('splitter_small', ...)` -- 确认
+  - 子体继承当前时间+难度的 hpMul/spdMul -- 与其他敌人一致
+  - 受 `CFG.MAX_ENEMIES` 约束 -- 确认
+- **isChild 阻止递归分裂**：
+  - config.js: splitter_small 配置 `isChild:true` -- 确认
+  - enemy.js 第22行: `this.isChild = t.isChild || false` -- 确认属性读取
+  - game.js 第479行: `!e.isChild` 检查 -- 确认阻断递归
+- **精灵绘制确认**（enemy.js 第181-190行）：
+  - splitter 分支（6次fillRect）：青绿色身体 + 深绿头部甲壳 + 中绿腹部 + 浅色眼睛 + 深色腿部
+  - splitter_small 分支（4次fillRect）：浅青色身体 + 浅色内层 + 深色双眼（简化版小体）
+  - 两种精灵视觉区分明确（不同色调和细节层次）
+- **Enemy 构造函数扩展**（enemy.js 第21-22行）：
+  - `this.splitter = t.splitter || false` -- 确认
+  - `this.isChild = t.isChild || false` -- 确认
+- **宝石价值链更新**（game.js 第447行）：
+  - splitter_small value=1 -- 确认（新增分支在三元表达式中）
+  - splitter 本体走默认 value=2 -- 确认
+- **食物掉落配置**（config.js 第59行）：
+  - splitter: { icon:'🍖', color:'#8d6e63' } -- 确认
+- **JS 语法检查通过**：
+  - config.js: {148/148} (0/0) [29/29] OK
+  - enemy.js: {62/62} (181/181) [2/2] OK
+  - spawner.js: {7/7} (6/6) [6/6] OK
+  - game.js: {180/180} (480/480) [33/33] OK
+  - main.js: {0/0} (0/0) [0/0] OK
+- E2E 测试 14/14 全绿
+
+### 新增缺陷
+
+无新缺陷引入。
+
+### 里程碑
+
+- **第8种敌人上线**：游戏敌人种类从7种增至8种（含分裂变种9种实体类型）
+- **分裂机制**：首个死亡触发新敌人的机制，增加后期战场密度压力
+- **递归防护**：isChild 标记优雅地阻止了无限分裂的可能性
+
+---
+
 ## 2026-04-04 — Drive #12: 新进化路线 FrostKnife + FlameBible 回归测试
 
 ### 测试结果：14/14 通过（全绿，耗时 5.0 分钟）

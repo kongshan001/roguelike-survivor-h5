@@ -2,6 +2,18 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [1.2.2] - 2026-04-05
+
+### QA
+- Drive #13 回归测试 14/14 全绿（4.8分钟）
+- 第8种敌人 Splitter 全部验证通过
+- CFG.ENEMY_TYPES 含 splitter + splitter_small，isChild 阻止递归分裂确认
+- 180s 后生成池混入 splitter，270s+ 权重翻倍确认
+- 本体死亡分裂为2个小分裂虫逻辑确认
+- 分裂虫/小分裂虫精灵绘制确认
+- JS 语法检查通过（5个文件括号全平衡）
+- 无新缺陷引入
+
 ## [1.2.1] - 2026-04-04
 
 ### QA
