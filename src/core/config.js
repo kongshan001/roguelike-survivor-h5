@@ -239,14 +239,16 @@ export const CFG = {
     // === Evolution/Synergy ===
     evolve_weapon:     { name:'第一次进化',  icon:'🧬',  desc:'首次进化武器',         type:'flag', reward:40 },
     synergy_first:     { name:'协同发现',    icon:'🔗',  desc:'首次触发协同效果',      type:'flag', reward:40 },
-    all_evolutions:    { name:'进化大师',    icon:'💎',  desc:'完成全部6种武器进化',   type:'multi', reward:300,
-      parts: ['evo_thunderholywater','evo_fireknife','evo_holydomain','evo_blizzard','evo_frostknife','evo_flamebible'] },
+    all_evolutions:    { name:'进化大师',    icon:'💎',  desc:'完成全部8种武器进化',   type:'multi', reward:300,
+      parts: ['evo_thunderholywater','evo_fireknife','evo_holydomain','evo_blizzard','evo_frostknife','evo_flamebible','evo_thunderang','evo_blazerang'] },
     evo_thunderholywater: { hidden:true, check: s => s.evolutions && s.evolutions.includes('thunderholywater') },
     evo_fireknife:        { hidden:true, check: s => s.evolutions && s.evolutions.includes('fireknife') },
     evo_holydomain:       { hidden:true, check: s => s.evolutions && s.evolutions.includes('holydomain') },
     evo_blizzard:         { hidden:true, check: s => s.evolutions && s.evolutions.includes('blizzard') },
     evo_frostknife:       { hidden:true, check: s => s.evolutions && s.evolutions.includes('frostknife') },
     evo_flamebible:       { hidden:true, check: s => s.evolutions && s.evolutions.includes('flamebible') },
+    evo_thunderang:       { hidden:true, check: s => s.evolutions && s.evolutions.includes('thunderang') },
+    evo_blazerang:        { hidden:true, check: s => s.evolutions && s.evolutions.includes('blazerang') },
     // === Shop/Economy ===
     shop_first:        { name:'初次投资',    icon:'🏪',  desc:'首次购买商店升级',      type:'flag', reward:20 },
     shop_max_one:      { name:'专精之路',    icon:'📈',  desc:'将任一商店升级买满3级', type:'flag', reward:60 },
