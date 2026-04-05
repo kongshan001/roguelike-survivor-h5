@@ -4,6 +4,130 @@
 
 ---
 
+## 2026-04-06 — Drive #21: Thunderang + Blazerang 进化武器实现 QA审查
+
+### 测试结果：14/14 通过（全绿，耗时 4.5 分钟）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 14 PASS | 全部测试通过 | Thunderang/Blazerang 实现无回归 |
+
+### 变更范围
+
+本次 Drive 涉及代码和文档变更：
+
+- `src/weapons/registry.js` -- 新增 Thunderang 类（972-1149行, ~178行）和 Blazerang 类（1151-1339行, ~189行），注册到 WEAPON_CLASSES
+- `src/game.js` -- 新增 Thunderang/Blazerang import 和 instanceof 更新链（第538-539行）
+- `docs/team/backend-log.md` -- 后端进度更新
+
+### 代码审查验证
+
+#### Thunderang 类（registry.js 第972-1149行）
+
+- **类结构**：继承 Weapon 基类，maxLevel=1 -- 确认
+- **构造函数**：`super('thunderang', owner)`，projectiles=[], effects=[] -- 确认
+- **CFG 常量引用**：从 `CFG.BOOMERANG.thunderang` 读取所有参数 -- 确认
+  - count:4, speed:350, returnSpeed:380, dmg:7, maxDist:400, cd:0.8, pierce:3 -- 与设计规格对齐
+  - trackAngle:1.31, curvature:0.15 -- 与设计规格对齐
+  - lightning: {chance:0.4, range:120, targets:2, dmg:8, chains:2, decay:0.5} -- 与设计规格对齐
+- **findNearestEnemy()**：平方距离比较优化（避免 sqrt），逻辑正确 -- 确认
+- **triggerLightningChain()** 方法：
+  - 40%概率触发（`Math.random() > cfg.chance` return） -- 与设计规格对齐
+  - 2层链式闪电，decay 0.5（第2链伤害减半） -- 与设计规格对齐
+  - 使用 `chainHitSet` 避免重复命中已穿透敌人 -- 确认
+  - 伤害正确应用 `this.applyDmg(cfg.dmg * dmgMul)` -- 确认
+  - 视觉效果记录到 `this.effects[]` -- 确认
+- **update() 逻辑**：
+  - 投掷4枚回旋镖，追踪4个不同最近敌人（不足则重复目标） -- 与设计规格对齐
+  - 飞出阶段：trackAngle 1.31 rad/s 追踪 + curvature 0.15 弧线偏移 -- 确认
+  - 飞出命中：触发闪电链 `this.triggerLightningChain(e.x, e.y, enemies, p.hit)` -- 确认
+  - **returnHit Set**：使用独立的 `returnHit` 集合，飞回命中不与飞出共享 -- 正确，双程独立判定
+  - 飞回命中：同样触发闪电链 -- 确认（双程闪电链）
+  - 穿透处理：`p.hit.size <= data.pierce` 允许穿透3个目标 -- 确认
+  - 飞回：returnSpeed=380 直线飞回，15px内消失 -- 确认
+- **draw() 渲染**：
+  - 金色(#ffc107) V字形 + 棕色(#795548) + 高光(#fff8e1) -- 与基础 Boomerang 一致
+  - 蓝色电弧缠绕 `rgba(255,235,59,${flicker})` -- 确认
+  - 闪电链效果：4段随机偏移锯齿状线段，alpha 衰减 -- 与 Lightning/Blizzard 一致
+
+#### Blazerang 类（registry.js 第1151-1339行）
+
+- **类结构**：继承 Weapon 基类，maxLevel=1 -- 确认
+- **构造函数**：`super('blazerang', owner)`，projectiles=[], trails=[] -- 确认
+- **CFG 常量引用**：从 `CFG.BOOMERANG.blazerang` 读取所有参数 -- 确认
+  - count:3, speed:330, returnSpeed:360, dmg:6, maxDist:380, cd:0.8, pierce:3 -- 与设计规格对齐
+  - trackAngle:1.05, curvature:0.2 -- 与设计规格对齐
+  - flame: {trailInterval:20, trailDur:1.5, trailDps:2, maxTrails:20, burnDur:2.5, burnDps:3} -- 与设计规格对齐
+- **update() 逻辑**：
+  - 投掷3枚回旋镖，追踪3个不同最近敌人 -- 与设计规格对齐
+  - **轨迹生成**：累计飞行距离 `p.trailDist += stepDist`，每20px生成一个火焰点 -- 确认
+  - **轨迹上限**：`this.trails.length > flame.maxTrails` 时 `this.trails.shift()` 移除最旧的 -- 确认（上限20）
+  - **飞回也生成轨迹**：returnHit Set + trailDist 累计 -- 确认（双程轨迹）
+  - **点燃效果**：命中时设置 `e._burn = {dmg, t: burnDur}` -- 确认（2.5秒/3DPS）
+  - **穿透处理**：与 Thunderang 一致的 pierce=3 逻辑 -- 确认
+  - **轨迹伤害更新**：每帧遍历所有轨迹点，对接触敌人造成伤害
+    - 伤害冷却 `hitCD Map`：0.5秒间隔，避免每帧多次伤害 -- 确认
+    - 伤害量 `flame.trailDps * 0.5` = 1（每次tick伤害 = DPS * tick间隔） -- 确认
+    - 碰撞范围 `12 + e.w/2` -- 确认
+  - 轨迹生命管理：`trail.life -= dt`，归零移除 -- 确认
+- **draw() 渲染**：
+  - 橙红色(#ff6d00) V字形 + 深红(#bf360c) + 高光(#ffeb3b) -- 与设计规格对齐
+  - 火焰轨迹：三层渲染（外圈 rgba(255,87,34) + 内核 rgba(255,152,0) + 亮点 rgba(255,235,59)） -- 与设计规格对齐
+  - alpha 衰减 `trail.life / trailDur` -- 确认
+  - 火焰闪烁 `rgba(255,87,34,${0.3 + Math.random()*0.3})` -- 确认
+
+#### game.js 集成验证
+
+- **import 行**（第21行）：`Thunderang, Blazerang` 已加入 import 列表 -- 确认
+- **instanceof 更新链**（第538-539行）：
+  - `else if (w instanceof Thunderang) w.update(dt, window.game.enemies)` -- 确认
+  - `else if (w instanceof Blazerang) w.update(dt, window.game.enemies)` -- 确认
+- **update 调用签名**：`(dt, enemies)` -- 与两个类的 update 签名匹配
+- **draw**：通过通用 `w.draw(ctx, cam, canvas)` 调用（第732行） -- 确认
+- **无 sfx 参数**：Thunderang/Blazerang 的 update 不需要 sfx 回调（与 Boomerang 一致） -- 合理
+
+#### upgrade-generate.js 进化系统验证
+
+- **进化触发**（第47-62行）：遍历 `CFG.EVOLUTIONS` 检查两个满级武器 -- 通用逻辑，确认
+- **进化条件**：`CFG.EVOLUTIONS` 中第7-8条定义了 boomerang+lightning->thunderang 和 boomerang+firestaff->blazerang -- 确认（config.js 第48-49行）
+- **进化应用**：`new WEAPON_CLASSES[evo.result](player)` -- 通用，确认 Thunderang/Blazerang 可通过此路径正确实例化
+- **成就触发**：进化时 `Save.achieveFlag('evolve_weapon')` -- 确认
+- **进化追踪**：`window.game.evolutions.push(evo.result)` -- 确认
+
+#### WEAPON_CLASSES 注册
+
+- 第1356行：`thunderang: Thunderang` -- 确认
+- 第1357行：`blazerang: Blazerang` -- 确认
+
+### JS 语法检查（4个文件全部通过）
+
+| 文件 | node --check | 括号平衡 |
+|------|-------------|---------|
+| registry.js | OK | {0} (0) [0] OK |
+| game.js | OK | {0} (0) [0] OK |
+| config.js | OK | {0} (0) [0] OK |
+| upgrade-generate.js | OK | {0} (0) [0] OK |
+
+### 新增缺陷
+
+| ID | 严重度 | 模块 | 描述 | 状态 | 指派 |
+|----|--------|------|------|------|------|
+| BUG-010 | Low | 成就-进化大师 | `all_evolutions` 成就 parts 仅含6个进化武器（evo_thunderholywater~evo_flamebible），缺少 evo_thunderang 和 evo_blazerang。描述文字"完成全部6种武器进化"也应更新为8种。 | 待处理 | designer/frontend |
+
+### 技术债务
+
+- **Drive #20 技术债务已关闭**：Thunderang/Blazerang 类已实现，WEAPON_CLASSES 已注册，进化不再报错
+- **BUG-010 成就遗漏**：新增2条进化路线后，`all_evolutions` multi 成就的 parts 数组未同步扩展。当前玩家即使完成全部8种进化也无法达成此成就中的 thunderang/blazerang 部分。建议 designer 在下一次 Drive 更新成就数据。
+
+### 里程碑
+
+- **进化系统扩展至8条路线**：回旋镖的两条进化路线全部实现
+- **雷霆回旋 (Thunderang)**：单体爆发+闪电链型进化武器，追踪4枚+40%闪电链+双程判定
+- **烈焰回旋 (Blazerang)**：穿透+区域控制型进化武器，3枚回旋+火焰轨迹+点燃+双程轨迹
+- **连续3个Drive零回归**：Drive #19, #20, #21 均为14/14全绿
+
+---
+
 ## 2026-04-05 — Drive #20: 第7种基础武器回旋镖实现 回归测试
 
 ### 测试结果：14/14 通过（全绿，耗时 4.5 分钟）

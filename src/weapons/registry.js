@@ -969,6 +969,375 @@ export class Boomerang extends Weapon {
   }
 }
 
+// --- Thunderang (evolved: boomerang + lightning) ---
+export class Thunderang extends Weapon {
+  constructor(owner) {
+    super('thunderang', owner);
+    this.projectiles = [];
+    this.effects = [];
+  }
+  get maxLevel() { return 1; }
+  findNearestEnemy(enemies, fromX, fromY, maxDist) {
+    let best = null, bestD = maxDist * maxDist;
+    for (const e of enemies) {
+      if (e.hp <= 0) continue;
+      const d = (e.x - fromX) ** 2 + (e.y - fromY) ** 2;
+      if (d < bestD) { bestD = d; best = e; }
+    }
+    return best;
+  }
+  triggerLightningChain(sourceX, sourceY, enemies, excludeHit) {
+    const cfg = CFG.BOOMERANG.thunderang.lightning;
+    if (Math.random() > cfg.chance) return;
+    const chainHitSet = new Set(excludeHit);
+    let prev = { x: sourceX, y: sourceY };
+    for (let chain = 0; chain < cfg.chains; chain++) {
+      let next = null, nd = Infinity;
+      for (const e of enemies) {
+        if (e.hp <= 0 || chainHitSet.has(e)) continue;
+        const d = (e.x - prev.x) ** 2 + (e.y - prev.y) ** 2;
+        if (d < cfg.range * cfg.range && d < nd) { nd = d; next = e; }
+      }
+      if (next) {
+        const dmgMul = chain === 0 ? 1 : cfg.decay ** chain;
+        next.hurt(this.applyDmg(cfg.dmg * dmgMul));
+        chainHitSet.add(next);
+        this.effects.push({ x0: prev.x, y0: prev.y, x1: next.x, y1: next.y, t: 0.2 });
+        prev = next;
+      } else break;
+    }
+  }
+  update(dt, enemies) {
+    const data = CFG.BOOMERANG.thunderang;
+    this.timer -= dt;
+    // Decay lightning effects
+    for (let i = this.effects.length - 1; i >= 0; i--) {
+      this.effects[i].t -= dt;
+      if (this.effects[i].t <= 0) this.effects.splice(i, 1);
+    }
+    if (this.timer <= 0) {
+      this.timer = data.cd;
+      // Find up to 'count' different nearest enemies
+      const targets = [];
+      const used = new Set();
+      for (let i = 0; i < data.count; i++) {
+        let best = null, bestD = Infinity;
+        for (const e of enemies) {
+          if (e.hp <= 0 || used.has(e)) continue;
+          const d = (e.x - this.owner.x) ** 2 + (e.y - this.owner.y) ** 2;
+          if (d < data.maxDist * 4 * data.maxDist * 4 && d < bestD) { bestD = d; best = e; }
+        }
+        if (best) { targets.push(best); used.add(best); }
+        else break;
+      }
+      for (let i = 0; i < data.count; i++) {
+        const target = targets[i] || targets[0] || null;
+        let angle;
+        if (target) {
+          angle = Math.atan2(target.y - this.owner.y, target.x - this.owner.x);
+        } else {
+          angle = Math.random() * Math.PI * 2;
+        }
+        this.projectiles.push({
+          x: this.owner.x, y: this.owner.y,
+          vx: Math.cos(angle) * data.speed,
+          vy: Math.sin(angle) * data.speed,
+          returning: false,
+          dist: 0,
+          hit: new Set(),
+          returnHit: new Set(),
+          angle, rotAngle: 0,
+        });
+      }
+    }
+    // Update projectiles
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
+      p.rotAngle += dt * 12;
+      if (!p.returning) {
+        const trackRad = data.trackAngle * dt;
+        const tgt = this.findNearestEnemy(enemies, p.x, p.y, 200);
+        if (tgt) {
+          const desired = Math.atan2(tgt.y - p.y, tgt.x - p.x);
+          let diff = desired - Math.atan2(p.vy, p.vx);
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          const turn = Math.sign(diff) * Math.min(Math.abs(diff), trackRad);
+          const curAngle = Math.atan2(p.vy, p.vx) + turn;
+          const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+          p.vx = Math.cos(curAngle) * spd;
+          p.vy = Math.sin(curAngle) * spd;
+        }
+        const perpX = -p.vy * data.curvature * dt;
+        const perpY = p.vx * data.curvature * dt;
+        p.x += (p.vx + perpX) * dt;
+        p.y += (p.vy + perpY) * dt;
+        p.dist += Math.sqrt(p.vx * p.vx + p.vy * p.vy) * dt;
+        if (p.dist >= data.maxDist) { p.returning = true; }
+        for (const e of enemies) {
+          if (e.hp <= 0 || p.hit.has(e)) continue;
+          if (Math.abs(p.x - e.x) < (8 + e.w / 2) && Math.abs(p.y - e.y) < (8 + e.h / 2)) {
+            e.hurt(this.applyDmg(data.dmg));
+            p.hit.add(e);
+            this.triggerLightningChain(e.x, e.y, enemies, p.hit);
+            if (data.pierce > 0 && p.hit.size <= data.pierce) continue;
+            if (!data.pierce) { p.returning = true; break; }
+          }
+        }
+      } else {
+        const dx = this.owner.x - p.x, dy = this.owner.y - p.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < 15) { this.projectiles.splice(i, 1); continue; }
+        p.vx = dx / d * data.returnSpeed;
+        p.vy = dy / d * data.returnSpeed;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        for (const e of enemies) {
+          if (e.hp <= 0 || p.returnHit.has(e)) continue;
+          if (Math.abs(p.x - e.x) < (8 + e.w / 2) && Math.abs(p.y - e.y) < (8 + e.h / 2)) {
+            e.hurt(this.applyDmg(data.dmg));
+            p.returnHit.add(e);
+            this.triggerLightningChain(e.x, e.y, enemies, p.returnHit);
+          }
+        }
+      }
+    }
+  }
+  draw(ctx, cam, canvas) {
+    for (const p of this.projectiles) {
+      const s = cam.w2s(p.x, p.y, canvas);
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(p.rotAngle);
+      // Gold V-shape with blue electric arcs
+      ctx.fillStyle = '#ffc107';
+      ctx.fillRect(-6, -1, 5, 2);
+      ctx.fillRect(1, -1, 5, 2);
+      ctx.fillRect(-6, -3, 2, 2);
+      ctx.fillRect(4, -3, 2, 2);
+      ctx.fillStyle = '#795548';
+      ctx.fillRect(-4, 0, 3, 1);
+      ctx.fillRect(1, 0, 3, 1);
+      ctx.fillStyle = '#fff8e1';
+      ctx.fillRect(-3, -2, 1, 1);
+      ctx.fillRect(3, -2, 1, 1);
+      // Electric arc wrapping
+      const flicker = Math.random() * 0.6 + 0.4;
+      ctx.fillStyle = `rgba(255,235,59,${flicker})`;
+      ctx.fillRect(-7, -4 + Math.random() * 2, 2, 1);
+      ctx.fillRect(5, -4 + Math.random() * 2, 2, 1);
+      ctx.fillRect(-2, -5, 4, 1);
+      ctx.restore();
+    }
+    // Lightning chain effects
+    for (const e of this.effects) {
+      const s0 = cam.w2s(e.x0, e.y0, canvas);
+      const s1 = cam.w2s(e.x1, e.y1, canvas);
+      ctx.strokeStyle = `rgba(255,235,59,${e.t * 5})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(s0.x, s0.y);
+      const steps = 4;
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        ctx.lineTo(s0.x + (s1.x - s0.x) * t + (Math.random() - 0.5) * 14,
+                    s0.y + (s1.y - s0.y) * t + (Math.random() - 0.5) * 14);
+      }
+      ctx.lineTo(s1.x, s1.y);
+      ctx.stroke();
+    }
+  }
+}
+
+// --- Blazerang (evolved: boomerang + firestaff) ---
+export class Blazerang extends Weapon {
+  constructor(owner) {
+    super('blazerang', owner);
+    this.projectiles = [];
+    this.trails = [];
+  }
+  get maxLevel() { return 1; }
+  findNearestEnemy(enemies, fromX, fromY, maxDist) {
+    let best = null, bestD = maxDist * maxDist;
+    for (const e of enemies) {
+      if (e.hp <= 0) continue;
+      const d = (e.x - fromX) ** 2 + (e.y - fromY) ** 2;
+      if (d < bestD) { bestD = d; best = e; }
+    }
+    return best;
+  }
+  update(dt, enemies) {
+    const data = CFG.BOOMERANG.blazerang;
+    const flame = data.flame;
+    this.timer -= dt;
+    if (this.timer <= 0) {
+      this.timer = data.cd;
+      const targets = [];
+      const used = new Set();
+      for (let i = 0; i < data.count; i++) {
+        let best = null, bestD = Infinity;
+        for (const e of enemies) {
+          if (e.hp <= 0 || used.has(e)) continue;
+          const d = (e.x - this.owner.x) ** 2 + (e.y - this.owner.y) ** 2;
+          if (d < data.maxDist * 4 * data.maxDist * 4 && d < bestD) { bestD = d; best = e; }
+        }
+        if (best) { targets.push(best); used.add(best); }
+        else break;
+      }
+      for (let i = 0; i < data.count; i++) {
+        const target = targets[i] || targets[0] || null;
+        let angle;
+        if (target) {
+          angle = Math.atan2(target.y - this.owner.y, target.x - this.owner.x);
+        } else {
+          angle = Math.random() * Math.PI * 2;
+        }
+        this.projectiles.push({
+          x: this.owner.x, y: this.owner.y,
+          vx: Math.cos(angle) * data.speed,
+          vy: Math.sin(angle) * data.speed,
+          returning: false,
+          dist: 0,
+          trailDist: 0,
+          hit: new Set(),
+          returnHit: new Set(),
+          angle, rotAngle: 0,
+        });
+      }
+    }
+    // Update projectiles
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
+      p.rotAngle += dt * 12;
+      if (!p.returning) {
+        const trackRad = data.trackAngle * dt;
+        const tgt = this.findNearestEnemy(enemies, p.x, p.y, 200);
+        if (tgt) {
+          const desired = Math.atan2(tgt.y - p.y, tgt.x - p.x);
+          let diff = desired - Math.atan2(p.vy, p.vx);
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          const turn = Math.sign(diff) * Math.min(Math.abs(diff), trackRad);
+          const curAngle = Math.atan2(p.vy, p.vx) + turn;
+          const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+          p.vx = Math.cos(curAngle) * spd;
+          p.vy = Math.sin(curAngle) * spd;
+        }
+        const perpX = -p.vy * data.curvature * dt;
+        const perpY = p.vx * data.curvature * dt;
+        const stepX = (p.vx + perpX) * dt;
+        const stepY = (p.vy + perpY) * dt;
+        p.x += stepX;
+        p.y += stepY;
+        const stepDist = Math.sqrt(stepX * stepX + stepY * stepY);
+        p.dist += stepDist;
+        // Generate fire trail
+        p.trailDist += stepDist;
+        if (p.trailDist >= flame.trailInterval) {
+          p.trailDist = 0;
+          this.trails.push({ x: p.x, y: p.y, life: flame.trailDur, hitCD: new Map() });
+          if (this.trails.length > flame.maxTrails) this.trails.shift();
+        }
+        if (p.dist >= data.maxDist) { p.returning = true; }
+        for (const e of enemies) {
+          if (e.hp <= 0 || p.hit.has(e)) continue;
+          if (Math.abs(p.x - e.x) < (8 + e.w / 2) && Math.abs(p.y - e.y) < (8 + e.h / 2)) {
+            e.hurt(this.applyDmg(data.dmg));
+            p.hit.add(e);
+            // Apply burn
+            if (!e._burn) e._burn = { dmg: 0, t: 0 };
+            e._burn.dmg = this.applyDmg(flame.burnDps);
+            e._burn.t = flame.burnDur;
+            if (data.pierce > 0 && p.hit.size <= data.pierce) continue;
+            if (!data.pierce) { p.returning = true; break; }
+          }
+        }
+      } else {
+        const dx = this.owner.x - p.x, dy = this.owner.y - p.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < 15) { this.projectiles.splice(i, 1); continue; }
+        p.vx = dx / d * data.returnSpeed;
+        p.vy = dy / d * data.returnSpeed;
+        const stepX = p.vx * dt;
+        const stepY = p.vy * dt;
+        p.x += stepX;
+        p.y += stepY;
+        // Return trip also generates trail
+        p.trailDist += Math.sqrt(stepX * stepX + stepY * stepY);
+        if (p.trailDist >= flame.trailInterval) {
+          p.trailDist = 0;
+          this.trails.push({ x: p.x, y: p.y, life: flame.trailDur, hitCD: new Map() });
+          if (this.trails.length > flame.maxTrails) this.trails.shift();
+        }
+        // Return trip damage + burn
+        for (const e of enemies) {
+          if (e.hp <= 0 || p.returnHit.has(e)) continue;
+          if (Math.abs(p.x - e.x) < (8 + e.w / 2) && Math.abs(p.y - e.y) < (8 + e.h / 2)) {
+            e.hurt(this.applyDmg(data.dmg));
+            p.returnHit.add(e);
+            if (!e._burn) e._burn = { dmg: 0, t: 0 };
+            e._burn.dmg = this.applyDmg(flame.burnDps);
+            e._burn.t = flame.burnDur;
+          }
+        }
+      }
+    }
+    // Update fire trails
+    for (let i = this.trails.length - 1; i >= 0; i--) {
+      const trail = this.trails[i];
+      trail.life -= dt;
+      if (trail.life <= 0) { this.trails.splice(i, 1); continue; }
+      for (const e of enemies) {
+        if (e.hp <= 0) continue;
+        if (Math.abs(trail.x - e.x) < (12 + e.w / 2) && Math.abs(trail.y - e.y) < (12 + e.h / 2)) {
+          if (!trail.hitCD.has(e) || trail.hitCD.get(e) <= 0) {
+            e.hurt(this.applyDmg(flame.trailDps * 0.5)); // 0.5s tick interval
+            trail.hitCD.set(e, 0.5);
+          } else {
+            trail.hitCD.set(e, trail.hitCD.get(e) - dt);
+          }
+        }
+      }
+    }
+  }
+  draw(ctx, cam, canvas) {
+    // Fire trails
+    for (const trail of this.trails) {
+      const alpha = trail.life / CFG.BOOMERANG.blazerang.flame.trailDur;
+      const s = cam.w2s(trail.x, trail.y, canvas);
+      ctx.fillStyle = `rgba(255,87,34,${alpha * 0.4})`;
+      ctx.fillRect(s.x - 5, s.y - 5, 10, 10);
+      ctx.fillStyle = `rgba(255,152,0,${alpha * 0.7})`;
+      ctx.fillRect(s.x - 3, s.y - 3, 6, 6);
+      ctx.fillStyle = `rgba(255,235,59,${alpha * 0.5})`;
+      ctx.fillRect(s.x - 1, s.y - 1, 2, 2);
+    }
+    // Boomerangs
+    for (const p of this.projectiles) {
+      const s = cam.w2s(p.x, p.y, canvas);
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(p.rotAngle);
+      // Orange-red V-shape
+      ctx.fillStyle = '#ff6d00';
+      ctx.fillRect(-6, -1, 5, 2);
+      ctx.fillRect(1, -1, 5, 2);
+      ctx.fillRect(-6, -3, 2, 2);
+      ctx.fillRect(4, -3, 2, 2);
+      ctx.fillStyle = '#bf360c';
+      ctx.fillRect(-4, 0, 3, 1);
+      ctx.fillRect(1, 0, 3, 1);
+      ctx.fillStyle = '#ffeb3b';
+      ctx.fillRect(-3, -2, 1, 1);
+      ctx.fillRect(3, -2, 1, 1);
+      // Fire glow
+      ctx.fillStyle = `rgba(255,87,34,${0.3 + Math.random() * 0.3})`;
+      ctx.fillRect(-7, -2, 1, 1);
+      ctx.fillRect(6, -2, 1, 1);
+      ctx.restore();
+    }
+  }
+}
+
 // ===== Weapon Registry =====
 export const WEAPON_CLASSES = {
   holywater: HolyWater,
@@ -984,4 +1353,6 @@ export const WEAPON_CLASSES = {
   blizzard: Blizzard,
   frostknife: FrostKnife,
   flamebible: FlameBible,
+  thunderang: Thunderang,
+  blazerang: Blazerang,
 };
