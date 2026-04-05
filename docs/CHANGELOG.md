@@ -2,6 +2,26 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [1.3.0] - 2026-04-05
+
+### Designer
+- 节奏与经济平衡审计报告（6大发现+3组调优方案）
+- 成就系统设计规格（25成就+11隐藏子成就）
+
+### Frontend
+- 调优A: EXP_TABLE 前期加速（Lv1-9阈值降低15-20%）
+- 调优B: 金币经济重构（perKill 10→3, 宝石1:1加金币）
+- 调优C: spawner.js 新增120-150s过渡阶段（平滑密度跳跃）
+- CFG.ACHIEVEMENTS 34条成就数据定义
+
+### Backend
+- 联机前置任务精简清单（3项前置任务，1页文档）
+- 平衡调优对联机架构影响评估：无阻塞
+
+### QA
+- Drive #16 测试 13/14 通过 + 1 flaky（Lv3平衡测试，非回归）
+- 3项平衡调优代码审查通过（config/game/spawner变更验证）
+
 ## [1.2.4] - 2026-04-05
 
 ### QA

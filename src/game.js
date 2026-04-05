@@ -441,11 +441,13 @@ function loop(time) {
           screenShake(shakeType, window.game);
         }
         const comboGold = window.game.player.comboGold();
-        window.game.player.gold += 10 + comboGold;
+        const gemVal = e.isBoss ? 50 : (e.type === 'skeleton' ? 3 : e.type === 'ghost' ? 2 : e.type === 'bat' ? 1 : e.type === 'elite_skeleton' ? 5 : e.type === 'splitter_small' ? 1 : 2);
+        const goldFromGem = CFG.GOLD.gemToGold ? gemVal : 0;
+        window.game.player.gold += CFG.GOLD.perKill + comboGold + goldFromGem;
         SFX.play('kill');
         window.game.dmgTexts.push({ x: e.x, y: e.y - 10, text: '💀', life: 0.8 });
         // Drop gems
-        const val = e.isBoss ? 50 : (e.type === 'skeleton' ? 3 : e.type === 'ghost' ? 2 : e.type === 'bat' ? 1 : e.type === 'elite_skeleton' ? 5 : e.type === 'splitter_small' ? 1 : 2);
+        const val = gemVal;
         const count = e.isBoss ? 8 : 1;
         for (let g = 0; g < count; g++) {
           window.game.gems.push(new Gem(e.x + rand(-10, 10), e.y + rand(-10, 10), val / count | 0 || 1));

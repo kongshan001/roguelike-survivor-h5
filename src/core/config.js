@@ -5,8 +5,12 @@ export const CFG = {
   PLAYER_SPEED: 160, PLAYER_HP: 8, PLAYER_SIZE: 16,
   PICKUP_RANGE: 35, GEM_FLY_SPEED: 250,
   INVINCIBLE_TIME: 1.0,
+  GOLD: {
+    perKill: 3,
+    gemToGold: true,
+  },
   MAX_ENEMIES: 70, MAX_BULLETS: 100,
-  EXP_TABLE: [0,10,15,22,30,40,52,66,82,100,120,144,172,206,246],
+  EXP_TABLE: [0,8,12,18,24,32,42,55,70,88,108,132,160,195,240],
   ENEMY_TYPES: {
     zombie:   { w:16, h:16, hp:3, speed:40, dmg:1, color:'#4caf50' },
     bat:      { w:14, h:14, hp:1, speed:80, dmg:1, color:'#ab47bc' },
