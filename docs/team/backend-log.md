@@ -10,10 +10,71 @@
 |--------|------|------|
 | P0 | 联机技术调研报告（网络同步/协议/服务器/部署） | ✅ 已完成 |
 | P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | ✅ 设计规格书完成 |
+| P1 | 网络协议详细规格书（消息定义/快照格式/断线重连） | ✅ Drive #11 完成 |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，待前端实现 |
 | P1 | 可序列化状态接口设计（游戏状态快照格式） | 🔨 设计完成待评审，待前端实现 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | ✅ 已评估，前置依赖 P1 前端实现 |
 | P2 | Docker 容器化部署方案 | 待评估 |
+
+---
+
+## 2026-04-04 — Drive #11: 网络协议详细规格书
+
+### 成果
+- 完成网络协议详细规格书 `docs/superpowers/specs/2026-04-04-network-protocol-spec.md`
+- 补充联机架构规格书中缺失的协议细节，覆盖 11 个章节
+
+### 规格书内容概要
+
+| 章节 | 内容 |
+|------|------|
+| 连接生命周期 | 完整的 WebSocket 消息交互时序图 |
+| 消息格式规范 | 通用包装 NetMsg + 序列号规则 + 17 种消息类型总表 |
+| C→S 消息定义 | join / ready / input / upgrade_pick / ping 各字段详细定义 + 服务器验证规则 |
+| S→C 消息定义 | room_info / game_start / snapshot / game_over / error 完整结构 |
+| 快照格式 | PlayerSnap / EnemySnap / BulletSnap / PickupSnap / EventSnap 全部实体序列化格式 |
+| 断线重连 | 检测机制 + 重连流程 + 重连策略（固定 2s 间隔，30s 超时） |
+| 服务器游戏循环 | 100ms tick 内各阶段时序分配 |
+| 客户端插值策略 | InterpBuffer 实现 + 渲染延迟 100ms + MVP 简化预测（位置覆盖） |
+| 带宽预算 | 上行 ~3KB/s / 下行 ~50KB/s 每客户端 |
+| 协议版本 | URL 参数版本检查 + 后向兼容策略 |
+| 决策记录 | 9 项技术决策及理由 |
+
+### 关键设计决策
+
+1. **input ~30Hz（有变化时发送）**：平衡响应性和带宽，比每帧发送节省 50%
+2. **snapshot 10Hz + 5KB/快照**：PvE 场景足够，50KB/s 下行在移动网络可接受
+3. **渲染延迟 100ms**：插值缓冲 3 个快照，画面平滑
+4. **MVP 客户端预测用位置覆盖而非重模拟**：简化实现，PvE 偶发纠正可接受
+5. **断线重连 30s 超时**：短局游戏（5分钟），不宜过长等待
+6. **新增 BulletSnap / PickupSnap**：架构规格书遗漏了子弹和掉落物的同步格式
+
+### 快照大小详细估算（2人 + 30敌人 + 20子弹 + 15掉落物）
+
+| 组件 | 数量 | 单条 | 小计 |
+|------|------|------|------|
+| PlayerSnap | 2 | ~200B | 400B |
+| EnemySnap | 30 | ~80B | 2400B |
+| BulletSnap | 20 | ~60B | 1200B |
+| PickupSnap | 15 | ~40B | 600B |
+| EventSnap | 5 | ~50B | 250B |
+| 包头 + 其他 | - | - | 150B |
+| **总计** | | | **~5KB** |
+
+### 与架构规格书的差异
+
+架构规格书中的 `ServerSnapshot` 只有 `players / enemies / events` 三个数组。本次协议规格书补充了：
+- `bullets: BulletSnap[]` — 子弹状态（武器 projectile 同步必需）
+- `pickups: PickupSnap[]` — 掉落物（宝石/食物/宝箱）
+- `serverSeq` — 服务器快照序号（检测跳帧）
+- 完整的 `EventSnap` 类型扩展（kill/damage/heal/pickup/levelup/boss_spawn/boss_kill）
+- 错误码体系（8 种标准错误码）
+
+### 决策记录
+- 协议规格书是前后端对接的核心契约，越早定义清楚越能减少协同成本
+- 快照格式相比架构规格书有扩展（新增 bullets/pickups），前端评估时需注意字段变化
+- MVP 阶段不做 Delta Compression，快照 5KB/100ms 在 JSON 格式下完全可接受
+- 断线重连设计已包含在协议规格中，服务器 MVP 实现时应一并支持
 
 ---
 
