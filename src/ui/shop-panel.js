@@ -37,6 +37,20 @@ export function showShopPanel() {
     if (canBuy) {
       card.onclick = () => {
         if (Save.buyShopUpgrade(key)) {
+          // Achievement: shop_first
+          Save.achieveFlag('shop_first');
+          // Achievement: shop_max_one — any upgrade reaches max level
+          const d = Save.load();
+          const su = d.shopUpgrades || {};
+          const u = CFG.SHOP.upgrades[key];
+          if (su[key] >= u.maxLevel) {
+            Save.achieveFlag('shop_max_one');
+          }
+          // Achievement: shop_max_all — all 6 upgrades at max level
+          const allMaxed = Object.entries(CFG.SHOP.upgrades).every(([k, v]) => (su[k] || 0) >= v.maxLevel);
+          if (allMaxed) {
+            Save.achieveFlag('shop_max_all');
+          }
           showShopPanel();
         }
       };

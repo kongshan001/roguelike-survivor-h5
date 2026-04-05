@@ -84,6 +84,7 @@ canvas{display:block;position:absolute;top:0;left:0}
     <button onclick="startGame()">开始游戏</button>
     <button onclick="showQuestPanel()" style="margin-top:12px;font:bold 14px monospace;color:#fff;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.3);padding:8px 24px;border-radius:8px;cursor:pointer">📜 挑战任务</button>
     <button onclick="showShopPanel()" style="margin-top:12px;font:bold 14px monospace;color:#fff;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.3);padding:8px 24px;border-radius:8px;cursor:pointer">🏪 升级商店</button>
+    <button onclick="showAchievementPanel()" style="margin-top:12px;font:bold 14px monospace;color:#fff;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.3);padding:8px 24px;border-radius:8px;cursor:pointer">🏅 成就</button>
   </div>
 
   <div id="diff-select" style="position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:20">
@@ -151,6 +152,13 @@ canvas{display:block;position:absolute;top:0;left:0}
     <div style="font:bold 14px monospace;color:#ce93d8;margin-bottom:16px">灵魂碎片: <span id="shop-sf">0</span></div>
     <div id="shop-list" style="width:100%;max-width:400px;max-height:60vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px"></div>
     <button onclick="hideShopPanel()" style="margin-top:16px;font:bold 14px monospace;color:#1a1a2e;background:#ffd54f;border:none;padding:8px 32px;border-radius:8px;cursor:pointer">返回</button>
+  </div>
+
+  <div id="achievement-panel" style="position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:20;padding:20px">
+    <h2 style="font:bold 22px monospace;color:#ffd54f;margin-bottom:4px">🏅 成就</h2>
+    <div style="font:bold 14px monospace;color:#ce93d8;margin-bottom:16px">完成: <span id="achieve-summary">0/0</span></div>
+    <div id="achieve-list" style="width:100%;max-width:400px;max-height:60vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px"></div>
+    <button onclick="hideAchievementPanel()" style="margin-top:16px;font:bold 14px monospace;color:#1a1a2e;background:#ffd54f;border:none;padding:8px 32px;border-radius:8px;cursor:pointer">返回</button>
   </div>
 </div>
 <script type="module" src="src/main.js"></script>

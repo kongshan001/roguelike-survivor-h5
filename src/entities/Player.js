@@ -1,5 +1,6 @@
 // ===== Player Entity =====
 import { CFG } from '../core/config.js';
+import { Save } from '../core/save.js';
 import { V, rand, clamp, dist } from '../core/math.js';
 
 export class Player {
@@ -195,6 +196,7 @@ export class Player {
 
   // ----- Synergy System -----
   checkSynergies() {
+    const prevCount = this.activeSynergies.size;
     this.activeSynergies.clear();
     if (!CFG.SYNERGIES) return;
     for (const [id, syn] of Object.entries(CFG.SYNERGIES)) {
@@ -212,6 +214,10 @@ export class Player {
           this.activeSynergies.add(id);
         }
       }
+    }
+    // Achievement: synergy_first — first synergy discovered
+    if (this.activeSynergies.size > 0) {
+      Save.achieveFlag('synergy_first');
     }
   }
 

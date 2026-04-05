@@ -43,8 +43,59 @@
 | P0 | ~~节奏平衡调优（EXP加速+金币经济+生成器过渡）~~ | **✅ 已完成 Drive #16** |
 | P1 | 网格空间哈希碰撞检测（敌人>80时启用） | 待启动 |
 | P1 | 固定时间步游戏循环（Timestep Fixing） | 待启动 |
-| P1 | 成就系统UI和逻辑实现 | 待启动 |
+| P1 | ~~成就系统UI和逻辑实现~~ | **✅ 已完成 Drive #17** |
 | P2 | ~~Ban/Reroll升级选项（🔄 换一批按钮，免费重抽1次）~~ | **✅ 已完成 Drive #6** |
+
+---
+
+## 2026-04-05 -- Drive #17: 成就系统前端实现
+
+### 成果
+基于策划规格书 `docs/superpowers/specs/2026-04-05-achievement-system-design.md` 实施成就系统前端部分：
+
+- **CFG.ACHIEVEMENTS 已定义**：34条成就数据（里程碑5 + 生存3 + 角色4 + 击杀6 + 进化7 + 商店3 + Quest2 + 隐藏2），已有配置无需修改
+- **Save.js 已实现**：`checkAchievements(stats)` / `achieveFlag(flagId)` / `getAchievementProgress(id)` 三个核心方法，已有实现无需修改
+- **成就面板UI** (`src/ui/achievement-panel.js`)
+  - `showAchievementPanel()` 渲染成就列表：图标+名称+描述+进度条+奖励
+  - 里程碑/多部件类型显示进度条（current/target，金色填充）
+  - 已完成成就显示金色★标记+金色背景
+  - 面板标题显示完成计数（done/total）
+  - `hideAchievementPanel()` 隐藏面板
+- **标题画面入口**：新增 "🏅 成就" 按钮
+- **achievement-panel HTML**：参考 quest-panel 结构，独立面板容器
+- **scenes.js**：`achievement-panel` 加入 ALL_SCENES
+- **game.js 修复**：endGame 中成就显示模板字符串语法错误修复
+  - 修复前：`` `${ach.icon || ${ach.name} (+${ach.reward}SF)` ``（模板字符串嵌套错误）
+  - 修复后：`` `${ach.icon} ${ach.name} (+${ach.reward}SF)` ``
+- **Flag成就触发器**：
+  - `evolve_weapon`：`upgrade-generate.js` 进化 apply() 中调用 `Save.achieveFlag('evolve_weapon')` + 记录 `game.evolutions.push(result)`
+  - `synergy_first`：`Player.js` `checkSynergies()` 中检测到任何激活协同时调用 `Save.achieveFlag('synergy_first')`
+  - `shop_first` / `shop_max_one` / `shop_max_all`：`shop-panel.js` 购买成功后检查并设置对应 flag
+
+### 设计决策
+- **成就面板独立于Quest面板**：两个面板各有自己的按钮入口，不使用Tab切换，保持实现简洁
+- **隐藏成就的处理**：隐藏子成就（`hidden:true`）不出现在成就列表中，仅作为 `multi` 类型父成就的组件
+- **非隐藏成就始终显示**：所有非隐藏成就显示完整名称+描述+图标，不使用"???"遮罩（与Quest面板保持一致体验）
+- **完成配色用金色**（#ffd54f）而非绿色，与Quest面板的绿色区分
+- **进度条仅用于 milestone/multi 类型**：condition 和 flag 类型无进度概念，不显示进度条
+- **Flag触发在事件发生时即时调用**：不需要等到 endGame 结算，确保进化/协同/商店成就即时可查
+
+### 变更文件
+| 文件 | 变更 |
+|------|------|
+| `src/ui/achievement-panel.js` | 重写成就面板渲染（进度条+完成标记+计数） |
+| `src/ui/upgrade-generate.js` | +1行 import Save, +3行 进化成就flag触发 |
+| `src/entities/Player.js` | +1行 import Save, +2行 协同成就flag触发 |
+| `src/ui/shop-panel.js` | +8行 商店成就flag触发（shop_first/shop_max_one/shop_max_all） |
+| `src/game.js` | 修复成就显示语法错误, +1行 import, +2行 window导出 |
+| `src/ui/scenes.js` | +1行 achievement-panel场景（已有） |
+| `index.html` | +1行 成就按钮, +6行 成就面板HTML |
+| `docs/team/frontend-log.md` | Drive #17工作记录 |
+
+### 技术债务
+- 成就面板未做分类过滤/排序（25个非隐藏成就平铺显示）
+- 缺少成就完成时的弹窗通知（仅在结算画面显示）
+- 商店购买后每次调用 `Save.load()` 读取最新状态，高频操作时可能重复读取
 
 ---
 

@@ -2,6 +2,7 @@
 import { CFG } from '../core/config.js';
 import { randInt } from '../core/math.js';
 import { WEAPON_CLASSES } from '../weapons/registry.js';
+import { Save } from '../core/save.js';
 
 export function generateUpgrades(player) {
   const pool = [];
@@ -52,6 +53,11 @@ export function generateUpgrades(player) {
         apply: () => {
           player.weapons = player.weapons.filter(w => w !== wA && w !== wB);
           player.weapons.push(new WEAPON_CLASSES[evo.result](player));
+          Save.achieveFlag('evolve_weapon');
+          if (window.game) {
+            if (!window.game.evolutions) window.game.evolutions = [];
+            window.game.evolutions.push(evo.result);
+          }
         } });
     }
   }

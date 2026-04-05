@@ -22,6 +22,7 @@ import {
 import { drawHUD } from './ui/hud.js';
 import { showQuestPanel, hideQuestPanel } from './ui/quest-panel.js';
 import { showShopPanel, hideShopPanel } from './ui/shop-panel.js';
+import { showAchievementPanel, hideAchievementPanel } from './ui/achievement-panel.js';
 
 // Export game state globally for test access
 window.game = null;
@@ -198,6 +199,8 @@ function beginGame(weaponName) {
     prevWaveStage: -1,
     weaponDmgMul: shopData.weaponDmg > 0 ? pu.weaponDmg.effects[shopData.weaponDmg - 1].mul : 1,
     goldMul: shopData.gold > 0 ? pu.gold.effects[shopData.gold - 1].mul : 1,
+    evolutions: [],
+    killsAt60: 0,
   };
   showScene(null);
   document.getElementById('hud').style.display = 'flex';
@@ -218,6 +221,8 @@ window.showQuestPanel = showQuestPanel;
 window.hideQuestPanel = hideQuestPanel;
 window.showShopPanel = showShopPanel;
 window.hideShopPanel = hideShopPanel;
+window.showAchievementPanel = showAchievementPanel;
+window.hideAchievementPanel = hideAchievementPanel;
 
 window.toggleAutoUpgrade = function toggleAutoUpgrade() {
   window.autoUpgrade = !window.autoUpgrade;
@@ -263,7 +268,10 @@ function endGame(won) {
     elapsed: window.game.elapsed,
     bossKilled: window.game.bossKilled,
     damageTaken: window.game.player._damageTaken,
-    bestCombo: window.game.player._bestCombo
+    bestCombo: window.game.player._bestCombo,
+    evolutions: window.game.evolutions || [],
+    completedQuestsCount: (Save.load().completedQuests || []).length,
+    killsAt60: window.game.killsAt60
   };
   const newlyCompleted = CFG.QUESTS.filter(q => q.check(stats)).map(q => q.id);
   const questResult = newlyCompleted.length > 0 ? Save.recordQuests(newlyCompleted) : { firstTime: [] };
@@ -283,16 +291,29 @@ function endGame(won) {
       if (q) questReward += q.reward;
       return q ? `${q.icon} ${q.name} (+${q.reward}SF)` : id;
     }).join('<br>');
-    questHtml = `<br><br>--- 📜 新任务完成 ---<br>${questNames}`;
+    questHtml = '<br><br>--- 📜 新任务完成 ---<br>' + questNames;
+  }
+
+  // Achievement checking
+  const completedQuestsCount = (Save.load().completedQuests || []).length;
+  stats.completedQuestsCount = completedQuestsCount;
+  const achieveResult = Save.checkAchievements(stats);
+  let achieveHtml = '';
+  if (achieveResult.newlyCompleted.length > 0) {
+    const achieveNames = achieveResult.newlyCompleted.map(aid => {
+      const ach = CFG.ACHIEVEMENTS[aid];
+      return ach ? `${ach.icon} ${ach.name} (+${ach.reward}SF)` : aid;
+    }).join('<br>');
+    achieveHtml = '<br><br>--- ★ 成就达成 ---<br>' + achieveNames;
   }
 
   // Soul fragment calculation
   const goldRate = window.game.goldMul || 1;
-  const earnedSF = Math.floor(window.game.player.gold * CFG.SHOP.soulFragmentRate * goldRate) + questReward;
+  const earnedSF = Math.floor(window.game.player.gold * CFG.SHOP.soulFragmentRate * goldRate) + questReward + achieveResult.rewardTotal;
   Save.addSoulFragments(earnedSF);
 
   document.getElementById('result-stats').innerHTML =
-    `击杀: ${window.game.player.kills}${newTag}<br>存活: ${m}:${s.toString().padStart(2, '0')}<br>金币: ${window.game.player.gold}<br>🔥 最高连击: ${window.game.player._bestCombo}<br><br>--- 最佳记录 ---<br>最高击杀: ${saveResult.data.bestScore}<br>最长存活: ${bestM}:${bestS.toString().padStart(2, '0')}<br>总游玩: ${saveResult.data.gamesPlayed}局<br><br>💎 获得 ${earnedSF} 灵魂碎片${questHtml}`;
+    '击杀: ' + window.game.player.kills + newTag + '<br>存活: ' + m + ':' + s.toString().padStart(2, '0') + '<br>金币: ' + window.game.player.gold + '<br>🔥 最高连击: ' + window.game.player._bestCombo + '<br><br>--- 最佳记录 ---<br>最高击杀: ' + saveResult.data.bestScore + '<br>最长存活: ' + bestM + ':' + bestS.toString().padStart(2, '0') + '<br>总游玩: ' + saveResult.data.gamesPlayed + '局<br><br>💎 获得 ' + earnedSF + ' 灵魂碎片' + questHtml + achieveHtml;
   setTimeout(() => showScene('result-screen'), 500);
 }
 window.endGame = endGame;
@@ -430,6 +451,10 @@ function loop(time) {
       const e = window.game.enemies[i];
       if (e.hp <= 0) {
         window.game.player.kills++;
+        // Track kills in first 60 seconds for pacifist achievement
+        if (window.game.elapsed < 60) {
+          window.game.killsAt60 = window.game.player.kills;
+        }
         screenShake(e.type === 'elite_skeleton' || e.isBoss ? 'killBig' : 'kill', window.game);
         // Combo
         window.game.player._combo++;

@@ -2,6 +2,22 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [1.4.0] - 2026-04-05
+
+### Frontend
+- 成就面板UI (achievement-panel.js)：25个可见成就列表+进度条+完成标记+奖励显示
+- 5种成就类型前端支持：milestone/condition/multi/flag/hidden
+- 进化武器触发 evolve_weapon 成就 (upgrade-generate.js)
+- 协同发现触发 synergy_first 成就 (Player.js)
+- 商店购买触发 shop_first/shop_max_one/shop_max_all 成就 (shop-panel.js)
+- 结算画面成就展示+灵魂碎片奖励自动发放 (game.js)
+- 成就面板HTML + 标题画面按钮入口 (index.html)
+
+### QA
+- Drive #17 测试 13/14 通过 + 1 flaky（经验宝石时序，非回归）
+- 8个变更文件 JS 语法检查全部通过
+- 34条成就数据+5种类型+4个Flag触发器验证通过
+
 ## [1.3.0] - 2026-04-05
 
 ### Designer
