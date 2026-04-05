@@ -12,12 +12,138 @@
 | P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | ✅ 设计规格书完成 |
 | P1 | 网络协议详细规格书（消息定义/快照格式/断线重连） | ✅ Drive #11 完成 |
 | P1 | 联机前置任务清单（前端 1 页精简清单） | ✅ Drive #15 已输出 |
-| P1 | 序列化接口规格书（v1.4.0 代码逐字段对照版） | ✅ Drive #19 已输出独立规格书 |
+| P1 | 序列化接口规格书（需更新：回旋镖投射物字段） | ⚠️ Drive #19 已输出，Drive #20 需补充 BoomerangSnap |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，待前端实现 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | ⏳ 已评估，阻塞于 P1 前端实现 |
 | P2 | Docker 容器化部署方案 | 待评估（低优先级） |
 
 ---
+
+## 2026-04-06 -- Drive #20: 回旋镖武器对联机序列化的影响评估
+
+### 背景
+
+v1.4.0 前端已完成回旋镖武器（第7种基础武器）代码实现，涉及 4 个文件变更：
+
+| 变更项 | 涉及文件 | 具体内容 |
+|--------|---------|---------|
+| CFG.BOOMERANG 数值常量块 | `src/core/config.js` | levels 1-3 + thunderang + blazerang 配置 |
+| Boomerang 类 | `src/weapons/registry.js` | 新增 ~128 行，含双程飞行+追踪逻辑 |
+| 导入+调用 | `src/game.js` | import Boomerang, update 调用 |
+| 升级池 | `src/ui/upgrade-generate.js` | boomerang 加入基础武器池 |
+
+注意：v1.4.0 仅实现了基础 Boomerang 类，尚未实现进化武器 Thunderang/Blazerang（CFG 中有配置但 registry.js 无对应类）。
+
+### 一、Boomerang 投射物的序列化影响
+
+Boomerang 与现有武器最大的架构差异：**它使用内部 `projectiles[]` 数组管理飞行中的投射物**，而现有武器（HolyWater/Knife/Lightning/Bible/FireStaff/FrostAura）要么不产生独立子弹（环绕/范围型），要么产生的子弹推入 `game.bullets[]` 全局数组。
+
+Boomerang 投射物结构（registry.js L876-886）：
+
+```js
+{
+  x, y,                  // 坐标
+  vx, vy,                // 速度向量
+  returning: boolean,    // 飞出 vs 飞回阶段
+  dist: number,          // 已飞行距离
+  hit: Set<Enemy>,       // 已命中敌人（不可序列化）
+  angle: number,         // 初始投掷角度
+  rotAngle: number,      // 旋转角度（纯视觉）
+  trail: [],             // 尾迹（纯视觉）
+}
+```
+
+**与序列化接口规格书的冲突**：
+
+Drive #19 的 `BulletSnap` 接口基于 `game.bullets[]` 全局数组设计，但 Boomerang 的投射物存储在 `weapon.projectiles[]` 中，不进入全局 bullets 数组。这意味着：
+
+| 问题 | 影响 | 严重度 |
+|------|------|--------|
+| snapshot() 漏掉 Boomerang 投射物 | 远程客户端看不到回旋镖飞行 | 高 |
+| 投射物 `hit: Set` 不可序列化 | 与 BulletSnap 同类问题 | 已有方案 |
+| `returning` 字段影响碰撞判定 | 飞出/飞回阶段碰撞逻辑不同，服务器需同步 | 中 |
+| `trail[]` 纯视觉数据 | 不需要序列化 | 无 |
+
+### 二、需要的序列化接口更新
+
+当前 `BulletSnap` 需要扩展或新增 `BoomerangSnap` 类型来处理内部投射物。有两种方案：
+
+**方案 A：将 Boomerang 投射物推入 game.bullets[]**
+
+- 修改 Boomerang 类，将投射物作为标准子弹推入全局数组
+- 优点：复用现有 BulletSnap，snapshot() 无需改动
+- 缺点：需要改变 Boomerang 的架构，`returning`/`dist` 等字段需要作为子弹可选字段
+
+**方案 B：snapshot() 中额外采集 weapon.projectiles[]**
+
+- 在 snapshot() 的 bullets 映射后，额外遍历 player.weapons 中的 Boomerang 实例的 projectiles
+- 优点：不修改 Boomerang 类架构
+- 缺点：序列化逻辑需要感知特定武器类型的内部结构，耦合度增加
+
+**推荐方案 B**，理由：
+1. 不修改前端游戏逻辑，保持 Boomerang 类的封装完整性
+2. 联机时代码重构可能统一投射物管理，那时再改不迟
+3. 序列化函数本来就需要感知 game 状态的完整结构
+
+方案 B 的序列化扩展代码约 15 行：
+
+```js
+// snapshot() 中 bullets 映射后追加
+const boomerangWeapons = game.player.weapons.filter(w => w.name === 'boomerang');
+const boomerangBullets = boomerangWeapons.flatMap(w =>
+  w.projectiles.map((p, i) => ({
+    id: `bm_${i}`,
+    x: Math.round(p.x * 100) / 100,
+    y: Math.round(p.y * 100) / 100,
+    vx: Math.round(p.vx),
+    vy: Math.round(p.vy),
+    returning: p.returning,
+    dist: Math.round(p.dist),
+    // hit: Set -- 不序列化
+    // angle, rotAngle, trail -- 不序列化（纯视觉）
+  }))
+);
+result.bullets.push(...boomerangBullets);
+```
+
+### 三、对快照大小的影响
+
+| 新增组件 | 数量 | 单条大小 | 小计 |
+|---------|------|---------|------|
+| BoomerangSnap (Lv3) | 最多 3 个同时飞行 | ~80B | 240B |
+
+总快照大小从 ~6KB 增加到 ~6.2KB，可忽略。
+
+### 四、对其他规格书的影响
+
+| 规格书 | 影响 | 说明 |
+|--------|------|------|
+| 网络协议规格书 | BulletSnap 新增可选字段 `returning`/`dist` | 回旋镖投射物有飞行阶段和距离状态 |
+| 序列化接口规格书 | snapshot() 新增 Boomerang projectiles 采集逻辑 | 约 15 行新增代码 |
+| Player 拆分方案 | 无影响 | Boomerang 逻辑在 Weapon 类内部，与 Player 拆分无关 |
+| 联机架构规格书 | 无影响 | 半授权状态同步模型不受新武器影响 |
+
+### 五、阻塞状态复查（连续第 8 次）
+
+| 后端产出物 | 状态 | 前端依赖 |
+|-----------|------|---------|
+| 联机技术调研报告 | 完成 | 无 |
+| 联机架构设计规格书 | 完成 | 无 |
+| 网络协议详细规格书 | 完成 | 无 |
+| 联机前置任务清单 | 完成 | 无（已交付前端参考） |
+| 序列化接口规格书 | **需更新（Boomerang 投射物字段）** | 前端评审 + 实现 |
+| Player 拆分方案 | 设计完成 | 前端评审 + 实现 |
+| 服务器 MVP 原型 | 评估完成 | 依赖上述两项前端实现 |
+
+前端当前版本 v1.4.0，本轮完成了回旋镖武器代码实现（基础武器，进化武器未实现）。Player 拆分仍未排入前端迭代计划。
+
+### 决策记录
+
+- Boomerang 使用 `weapon.projectiles[]` 而非 `game.bullets[]` 管理投射物，这是序列化接口规格书需要更新的原因
+- 推荐方案 B（snapshot 额外采集）而非方案 A（改 Boomerang 架构），理由是不修改前端游戏逻辑
+- 进化武器 Thunderang/Blazerang 尚未实现，暂不评估其序列化需求；实现时再补充
+- 序列化接口规格书（Drive #19 产出）需要在下次前端实现联机前置任务前更新 BoomerangSnap 部分
+- 连续第 8 次阻塞确认。联机前置任务清单仍然有效，等待前端排入计划
 
 ## 2026-04-06 -- Drive #19: 序列化接口规格书 (代码逐字段对照版)
 
