@@ -21,6 +21,8 @@ import {
 } from './weapons/registry.js';
 import { drawHUD } from './ui/hud.js';
 import { showQuestPanel, hideQuestPanel } from './ui/quest-panel.js';
+import { showShopPanel, hideShopPanel } from './ui/shop-panel.js';
+import { initSpriteCache } from './core/sprite-cache.js';
 
 // Export game state globally for test access
 window.game = null;
@@ -34,6 +36,7 @@ const mmCtx = mmCanvas.getContext('2d');
 
 let selectedChar = null;
 let selectedDiff = 'normal';
+window.autoUpgrade = false;
 
 // ===== Canvas resize =====
 function resize() {
@@ -151,6 +154,14 @@ function beginGame(weaponName) {
   p.maxHp = p.hp;
   p.speed = Math.round(p.speed * diff.playerSpeedMul);
 
+  // Apply shop upgrades
+  const shopData = Save.load().shopUpgrades || {};
+  const pu = CFG.SHOP.upgrades;
+  if (shopData.maxhp > 0) { const eff = pu.maxhp.effects[shopData.maxhp - 1]; p.maxHp += eff.hp; p.hp += eff.hp; }
+  if (shopData.speed > 0) { p.speed = Math.round(p.speed * pu.speed.effects[shopData.speed - 1].speedMul); }
+  if (shopData.pickup > 0) { p.pickupRange += pu.pickup.effects[shopData.pickup - 1].range; }
+  if (shopData.expbonus > 0) { p.expBonus += (pu.expbonus.effects[shopData.expbonus - 1].mul - 1); }
+
   // Wire callbacks
   p.onSFX = (id) => SFX.play(id);
   p.onScreenShake = (type) => screenShake(type, window.game);
@@ -183,6 +194,8 @@ function beginGame(weaponName) {
     waveToast: null,
     waveToastTimer: 0,
     prevWaveStage: -1,
+    weaponDmgMul: shopData.weaponDmg > 0 ? pu.weaponDmg.effects[shopData.weaponDmg - 1].mul : 1,
+    goldMul: shopData.gold > 0 ? pu.gold.effects[shopData.gold - 1].mul : 1,
   };
   showScene(null);
   document.getElementById('hud').style.display = 'flex';
@@ -201,6 +214,25 @@ function restartGame() {
 window.restartGame = restartGame;
 window.showQuestPanel = showQuestPanel;
 window.hideQuestPanel = hideQuestPanel;
+window.showShopPanel = showShopPanel;
+window.hideShopPanel = hideShopPanel;
+
+window.toggleAutoUpgrade = function toggleAutoUpgrade() {
+  window.autoUpgrade = !window.autoUpgrade;
+  const btn = document.getElementById('hud-auto');
+  if (autoUpgrade) {
+    btn.style.background = 'rgba(79,195,247,0.25)';
+    btn.style.borderColor = '#4fc3f7';
+    btn.style.color = '#4fc3f7';
+    btn.textContent = 'AUTO✓';
+  } else {
+    btn.style.background = 'rgba(255,255,255,0.08)';
+    btn.style.borderColor = 'rgba(255,255,255,0.2)';
+    btn.style.color = '#888';
+    btn.textContent = 'AUTO';
+  }
+};
+window.toggleAutoUpgrade = toggleAutoUpgrade;
 
 function updateTitleStats() {
   const d = Save.load();
@@ -208,7 +240,8 @@ function updateTitleStats() {
   if (!el) return;
   if (d.gamesPlayed === 0) { el.textContent = ''; return; }
   const bm = Math.floor(d.bestTime / 60), bs = Math.floor(d.bestTime % 60);
-  el.innerHTML = `🏆 ${d.bestScore}杀 | ⏱ ${bm}:${bs.toString().padStart(2, '0')} | 🎮 ${d.gamesPlayed}局`;
+  const sf = d.soulFragments || 0;
+  el.innerHTML = `🏆 ${d.bestScore}杀 | ⏱ ${bm}:${bs.toString().padStart(2, '0')} | 🎮 ${d.gamesPlayed}局 | 💎 ${sf}`;
 }
 window.updateTitleStats = updateTitleStats;
 
@@ -241,16 +274,23 @@ function endGame(won) {
 
   // Build quest completion text
   let questHtml = '';
+  let questReward = 0;
   if (questResult.firstTime.length > 0) {
     const questNames = questResult.firstTime.map(id => {
       const q = CFG.QUESTS.find(qq => qq.id === id);
-      return q ? `${q.icon} ${q.name}` : id;
+      if (q) questReward += q.reward;
+      return q ? `${q.icon} ${q.name} (+${q.reward}SF)` : id;
     }).join('<br>');
     questHtml = `<br><br>--- 📜 新任务完成 ---<br>${questNames}`;
   }
 
+  // Soul fragment calculation
+  const goldRate = window.game.goldMul || 1;
+  const earnedSF = Math.floor(window.game.player.gold * CFG.SHOP.soulFragmentRate * goldRate) + questReward;
+  Save.addSoulFragments(earnedSF);
+
   document.getElementById('result-stats').innerHTML =
-    `击杀: ${window.game.player.kills}${newTag}<br>存活: ${m}:${s.toString().padStart(2, '0')}<br>金币: ${window.game.player.gold}<br>🔥 最高连击: ${window.game.player._bestCombo}<br><br>--- 最佳记录 ---<br>最高击杀: ${saveResult.data.bestScore}<br>最长存活: ${bestM}:${bestS.toString().padStart(2, '0')}<br>总游玩: ${saveResult.data.gamesPlayed}局${questHtml}`;
+    `击杀: ${window.game.player.kills}${newTag}<br>存活: ${m}:${s.toString().padStart(2, '0')}<br>金币: ${window.game.player.gold}<br>🔥 最高连击: ${window.game.player._bestCombo}<br><br>--- 最佳记录 ---<br>最高击杀: ${saveResult.data.bestScore}<br>最长存活: ${bestM}:${bestS.toString().padStart(2, '0')}<br>总游玩: ${saveResult.data.gamesPlayed}局<br><br>💎 获得 ${earnedSF} 灵魂碎片${questHtml}`;
   setTimeout(() => showScene('result-screen'), 500);
 }
 window.endGame = endGame;
@@ -689,5 +729,6 @@ loop(performance.now());
 
 // ===== INIT =====
 initInput();
+initSpriteCache();
 showScene('title-screen');
 updateTitleStats();

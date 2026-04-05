@@ -5,7 +5,7 @@ export const CFG = {
   PLAYER_SPEED: 160, PLAYER_HP: 8, PLAYER_SIZE: 16,
   PICKUP_RANGE: 35, GEM_FLY_SPEED: 250,
   INVINCIBLE_TIME: 1.0,
-  MAX_ENEMIES: 50, MAX_BULLETS: 100,
+  MAX_ENEMIES: 70, MAX_BULLETS: 100,
   EXP_TABLE: [0,10,15,22,30,40,52,66,82,100,120,144,172,206,246],
   ENEMY_TYPES: {
     zombie:   { w:16, h:16, hp:3, speed:40, dmg:1, color:'#4caf50' },
@@ -155,6 +155,17 @@ export const CFG = {
       weaponBonus:{coneBonus:40,burnDurBonus:1} },
     frost_regen: { name:'极寒光环', icon:'❄️', req:{weapon:'frostaura',passive:'regen'}, desc:'冰冻概率+5%/s，冰冻+0.5s',
       weaponBonus:{freezeBonus:0.05,freezeDurBonus:0.5} }
+  },
+  SHOP: {
+    soulFragmentRate: 0.3,
+    upgrades: {
+      maxhp:     { name:'生命强化', icon:'❤️', maxLevel:3, costs:[20,40,80],   effects:[{hp:1},{hp:2},{hp:3}] },
+      speed:     { name:'速度训练', icon:'👟', maxLevel:3, costs:[20,40,80],   effects:[{speedMul:1.05},{speedMul:1.10},{speedMul:1.15}] },
+      pickup:    { name:'拾取精通', icon:'📡', maxLevel:3, costs:[15,30,60],   effects:[{range:5},{range:10},{range:15}] },
+      expbonus:  { name:'知识汲取', icon:'📚', maxLevel:3, costs:[25,50,100],  effects:[{mul:1.05},{mul:1.10},{mul:1.15}] },
+      weaponDmg: { name:'武器精通', icon:'⚔️', maxLevel:3, costs:[30,60,120],  effects:[{mul:1.03},{mul:1.06},{mul:1.10}] },
+      gold:      { name:'贪婪之心', icon:'💰', maxLevel:3, costs:[15,30,60],   effects:[{mul:1.10},{mul:1.20},{mul:1.30}] },
+    }
   },
   UPGRADE_REROLL: {
     maxReroll: 1

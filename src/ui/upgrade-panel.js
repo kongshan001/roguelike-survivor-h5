@@ -3,6 +3,13 @@ import { generateUpgrades } from './upgrade-generate.js';
 export { generateUpgrades };
 
 export function showUpgrade(choices, game) {
+  // Auto-upgrade: immediately pick first option
+  if (window.autoUpgrade && choices.length > 0) {
+    choices[0].apply();
+    game.player.checkSynergies();
+    return;
+  }
+
   const panel = document.getElementById('upgrade-panel');
   const cards = document.getElementById('upg-cards');
   let rerollUsed = false;
