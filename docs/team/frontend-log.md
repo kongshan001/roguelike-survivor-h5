@@ -4,6 +4,75 @@
 
 ---
 
+## 2026-04-07 -- Drive #32: 无尽模式代码验证 + 状态巡检
+
+### 1. 代码质量检查
+
+- **JS语法检查**: 24个源文件全部通过 `node --check`（sfx/config/math/save/Player/chest/enemy/food/gem/game/main/camera/damage-text/spawner/achievement-panel/hud/input/quest-panel/scenes/shop-panel/skill-panel/upgrade-generate/upgrade-panel/registry）
+- **E2E测试**: 14/14 全部通过（耗时4.4分钟），零回归，连续12个Drive零回归（Drive #20~#31 均为 14/14 全绿）
+
+### 2. 无尽模式实现验证（21/21实现点）
+
+策划Designer在Drive #32已确认无尽模式设计规格21/21实现点全部已在代码中落地。前端逐项代码验证结果：
+
+#### config.js -- CFG.ENDLESS + CFG.DIFFICULTY.endless + 4个无尽Quest (7项)
+
+| # | 实现点 | 验证结果 | 位置 |
+|---|--------|---------|------|
+| 1 | CFG.DIFFICULTY.endless 配置 | 已存在 | config.js:110-112 |
+| 2 | CFG.ENDLESS 常量块 (bossInterval=240, bossScalePerCycle, extraHpPerMin等) | 已存在 | config.js:286-299 |
+| 3 | Quest: endless_5min (存活5分钟, 奖励150SF) | 已存在 | config.js:220 |
+| 4 | Quest: endless_10min (存活10分钟, 奖励300SF) | 已存在 | config.js:221 |
+| 5 | Quest: endless_boss3 (击杀3个Boss, 奖励400SF) | 已存在 | config.js:222 |
+| 6 | Quest: endless_kill200 (击杀200敌人, 奖励250SF) | 已存在 | config.js:223 |
+| 7 | Quest check函数均含 `s.endless&&` 前置条件 | 已确认 | config.js:220-223 |
+
+#### save.js -- 无尽存档字段 + 迁移 (5项)
+
+| # | 实现点 | 验证结果 | 位置 |
+|---|--------|---------|------|
+| 8 | endlessUnlocked: false 字段 | 已存在 | save.js:14 |
+| 9 | bestEndlessTime: 0 字段 | 已存在 | save.js:15 |
+| 10 | bestEndlessKills: 0 字段 | 已存在 | save.js:16 |
+| 11 | bestEndlessBossKills: 0 字段 | 已存在 | save.js:17 |
+| 12 | 旧存档迁移 (undefined检查) | 已存在 | save.js:37-40 |
+
+#### game.js -- 核心无尽逻辑 (7项)
+
+| # | 实现点 | 验证结果 | 位置 |
+|---|--------|---------|------|
+| 13 | endless 标志传递 (`selectedDiff === 'endless'`) | 已存在 | game.js:229 |
+| 14 | 时间检查跳过 (`!window.game.endless && elapsed >= CFG.GAME_TIME`) | 已存在 | game.js:402-404 |
+| 15 | 无尽Boss周期生成 (首次270s, 间隔CFG.ENDLESS.bossInterval) | 已存在 | game.js:424-441 |
+| 16 | Boss HP/速度缩放 (`bossScalePerCycle.hpMul/spdMul` 按周期指数增长) | 已存在 | game.js:434-438 |
+| 17 | 动态maxEnemies (随时间增长, 上限CFG.ENDLESS.maxEnemiesCap=100) | 已存在 | game.js:452 |
+| 18 | 无尽结算逻辑 (记录bestEndlessTime/Kills/BossKills + 专属结算UI) | 已存在 | game.js:309-316, 336-342, 377-378 |
+| 19 | 无尽Boss击杀奖励 (gold+50, exp+30, food+5) | 已存在 | game.js:621-625 |
+
+#### spawner.js -- 生成速率无尽分支 (2项)
+
+| # | 实现点 | 验证结果 | 位置 |
+|---|--------|---------|------|
+| 20 | getSpawnRate(elapsed, endless) endless分支 (interval/按分钟缩放/count递增) | 已存在 | spawner.js:12-19 |
+| 21 | 无尽缩放上界 (interval>=0.25, count<=8, scale cap 4x) | 已存在 | spawner.js:14-17 |
+
+**结论**: 21/21实现点全部已在代码中验证存在，与策划确认一致。无尽模式功能完整，代码与设计规格完全对齐。
+
+### 3. 技术债务（维持不变）
+
+- 网格空间哈希碰撞检测（敌人>80时启用）-- P1（无紧迫性，MAX_ENEMIES 70~100 时暴力检测仍可接受）
+- 固定时间步游戏循环（Timestep Fixing）-- P1（联机前置条件，单机模式无紧迫需求）
+- 成就面板未做分类过滤/排序
+- 缺少成就完成时弹窗通知
+- 商店面板效果描述未显示下一级预览
+- Ultimate 系统实现（8个修改点，~250行预估）-- P1（待安排功能迭代 Drive）
+
+### 变更文件
+
+无代码变更。仅更新 `docs/team/frontend-log.md`。
+
+---
+
 ## 2026-04-07 -- Drive #31: 前端状态巡检 + 技术债务审查
 
 ### 1. 状态检查
