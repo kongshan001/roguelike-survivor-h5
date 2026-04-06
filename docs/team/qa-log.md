@@ -4,6 +4,79 @@
 
 ---
 
+## 2026-04-07 -- Drive #30: Ultimate系统QA评估 + 文档变更回归测试
+
+### 测试结果：14/14 通过（全绿，耗时 4.4 分钟）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 14 PASS | 全部测试通过 | 纯文档变更，无回归 |
+
+### JS 语法检查（24个文件全部通过）
+
+所有 src/ 下 .js 文件 `node --check` 通过，零语法错误。
+
+### 代码变更审查
+
+本次 Drive #30 仅有文档变更（3个 commit），无 src/ 代码修改：
+
+- `docs/superpowers/specs/2026-04-06-ultimate-system-design.md` -- Ultimate/终极技能系统设计规格（448行）
+- `docs/team/designer-log.md` -- Drive #30 设计工作记录
+- `docs/team/frontend-log.md` -- Drive #30 前端状态巡检 + Ultimate 可实现性评估
+- `docs/team/backend-log.md` -- Drive #30 Ultimate 系统对联机架构影响评估
+
+无需回归测试（已执行确认性测试，14/14 全绿）。
+
+### 缺陷状态
+
+无新缺陷引入。所有已知 bug（BUG-001~013 + ENH-001/002）已关闭。
+
+### Ultimate 系统 QA 评估
+
+#### 设计规格书关键验证点
+
+| # | 验证项 | 评估 | 说明 |
+|---|--------|------|------|
+| 1 | 充能追踪机制 | 设计完整 | 击杀+1.5%/精英+5%/Boss+12%/受伤+1%，4种充能来源覆盖全面 |
+| 2 | 充能数值节奏 | 合理 | 标准局 ~2:25 首次释放，~3:50 二次释放，2次/5分钟节奏与强度曲线匹配 |
+| 3 | 4种 Ultimate 效果差异化 | 设计清晰 | 奥术轰炸(清场)/狂暴战意(爆发)/箭雨风暴(突围)/暗影裂隙(控场)，4种定位无重叠 |
+| 4 | 成就扩展 | 格式正确 | ultimate_first(flag)/ultimate_massacre(condition)，类型与现有成就一致 |
+| 5 | Quest 扩展 | 格式正确 | ultimate_kill_20，check 函数语法正确，与现有 Quest 格式一致 |
+| 6 | gameStats 新增字段 | 完整 | ultimateUsed/ultimateKills/ultimateMaxKills 三个字段覆盖统计需求 |
+| 7 | CFG.ULTIMATE 常量结构 | 结构清晰 | 全局参数 + 角色子对象，与现有 CFG.BOOMERANG 结构一致 |
+| 8 | 与现有系统交互 | 考虑周全 | 商店/连击/协同/难度/无尽 5个系统均有交互说明 |
+
+#### 前端实现时 QA 需关注的风险点
+
+| # | 风险 | 严重度 | 说明 |
+|---|------|--------|------|
+| R1 | Player.js 类结构完整性 | Critical | Player.js 历史上有类结构破坏的先例(BUG-008/Drive #6)，新增 _ultimateCharge/_ultimateActive/_ultimateType 字段时需确认类闭合正确 |
+| R2 | registry.js 8个武器的 dmgMul/attackSpeedMul 注入 | Medium | 狂暴战意需要所有武器 update() 中检查 _ultimateActive，涉及 15 种武器类，遗漏任一种即产生功能 bug |
+| R3 | 充能条 UI DPR 适配 | Medium | 圆形充能指示器 + Canvas 绘制，需确认 Camera.w2s() 返回逻辑像素，不做额外 /dpr |
+| R4 | 移动端 ULT 按钮与 DASH 按钮布局冲突 | Medium | ULT 在 DASH 正上方 60px，需验证不同屏幕尺寸下不重叠且不超出视口 |
+| R5 | 充能溢出处理 | Low | 规格要求 >100% 丢弃，需确认 Math.min(charge, 100) 防止溢出 |
+| R6 | Ultimate 击杀连击计数 | Low | 奥术轰炸一次清场可能 20-30 连击，需验证连击系统在极端连击下的稳定性 |
+| R7 | 暗影裂隙减速与冰冻光环减速不叠加 | Low | 规格要求取较大值，实现时需确认减速取 max 而非累加 |
+
+#### 建议测试用例
+
+| ID | 用例名称 | 类型 | 验证目标 |
+|----|---------|------|---------|
+| TC-ULT-001 | Ultimate 充能条渲染 | 功能 | 充能条显示在 DASH 按钮上方，0% 时灰色，100% 时金色脉动 |
+| TC-ULT-002 | Q 键 / ULT 按钮释放 | 功能 | 充能满时按 Q 或点击 ULT 按钮触发 Ultimate，释放后充能归零 |
+| TC-ULT-003 | Ultimate 不暂停游戏 | 功能 | 释放期间敌人继续移动/攻击，玩家仍可移动操作 |
+| TC-ULT-004 | Ultimate 击杀计入连击 | 集成 | Ultimate 击杀的敌人使 combo 计数递增，经验加成正常应用 |
+
+### 决策记录
+
+- 14/14 全绿，连续 10 个 Drive 零回归（Drive #20~#30）
+- 本次为纯文档变更，无需回归测试，执行确认性测试通过
+- Ultimate 系统设计规格完整，8个文件 ~225 行预估实现量合理
+- 版本号不递增（无功能变更）
+- 前端实现 Ultimate 时需重新执行完整 E2E 测试 + 4 个新 Ultimate 测试用例
+
+---
+
 ## 2026-04-06 -- Drive #29: quests_half/quests_all 成就硬编码修复验证
 
 ### 测试结果：14/14 通过（13 passed + 1 flaky retry，耗时 5.9 分钟）
