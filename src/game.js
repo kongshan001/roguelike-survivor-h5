@@ -314,7 +314,7 @@ function endGame(won) {
   Save.addSoulFragments(earnedSF);
 
   document.getElementById('result-stats').innerHTML =
-    '击杀: ' + window.game.player.kills + newTag + '<br>存活: ' + m + ':' + s.toString().padStart(2, '0') + '<br>金币: ' + window.game.player.gold + '<br>🔥 最高连击: ' + window.game.player._bestCombo + '<br><br>--- 最佳记录 ---<br>最高击杀: ' + saveResult.data.bestScore + '<br>最长存活: ' + bestM + ':' + bestS.toString().padStart(2, '0') + '<br>总游玩: ' + saveResult.data.gamesPlayed + '局<br><br>💎 获得 ' + earnedSF + ' 灵魂碎片' + questHtml + achieveHtml;
+    '击杀: ' + window.game.player.kills + newTag + '&nbsp;&nbsp;存活: ' + m + ':' + s.toString().padStart(2, '0') + '&nbsp;&nbsp;连击: ' + window.game.player._bestCombo + '<br>金币: ' + window.game.player.gold + '&nbsp;&nbsp;💎 +' + earnedSF + ' 灵魂碎片' + questHtml + achieveHtml;
   setTimeout(() => showScene('result-screen'), 500);
 }
 window.endGame = endGame;
