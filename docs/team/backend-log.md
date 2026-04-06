@@ -12,11 +12,300 @@
 | P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | ✅ 设计规格书完成 |
 | P1 | 网络协议详细规格书（消息定义/快照格式/断线重连） | ✅ Drive #11 完成 |
 | P1 | 联机前置任务清单（前端 1 页精简清单） | ✅ Drive #15 已输出 |
-| P1 | 序列化接口规格书（需更新：无尽模式字段 + critDmgBonus/goldDropBonus + 6新协同） | ⚠️ Drive #24 确认：PlayerSnap + GameSnap 需新增无尽模式字段，待前端实现 |
+| P1 | 序列化接口规格书（需更新：无尽模式字段 + critDmgBonus/goldDropBonus + 6新协同 + 毒雾_poison字段 + 3新协同） | ⚠️ Drive #25 确认：EnemySnap 需新增 poison 字段，PlayerSnap 需新增 poisonmist_armor/poisonmist_regen 状态，待前端实现 |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，待前端实现 |
 | P1 | 无尽模式联机适配方案（房间生命周期/状态同步限流/存档验证） | ⚠️ Drive #24 评估完成，关键风险已识别，待联机阶段实施 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | ⏳ 已评估，阻塞于 P1 前端实现 |
 | P2 | Docker 容器化部署方案 | 待评估（低优先级） |
+
+---
+
+## 2026-04-06 -- Drive #25: 毒雾(PoisonMist)武器对联机序列化的影响评估
+
+### 背景
+
+策划 Drive #25 完成了第 8 种基础武器毒雾(PoisonMist)的设计规格书，包含：
+
+1. **基础武器 PoisonMist**: 以玩家为中心的 DOT 叠层毒雾区域
+2. **进化武器 A CorrosiveDomain**: 毒雾+圣经 = 超大范围毒雾 + 3 个旋转毒球
+3. **进化武器 B PlagueMagnet**: 毒雾+磁铁 = 毒雾 + 范围内宝石吸引
+4. **3 个新 Synergy**: 猛毒护甲/腐蚀再生/剧毒炼金
+5. **2 条新进化路线**: 毒雾+圣经=腐蚀领域、毒雾+磁铁=瘟疫磁力
+
+当前版本 v1.6.1，毒雾武器尚未实现（设计规格刚完成），属于 v2.1 规划。
+
+涉及文件变更（预计）：
+
+| 变更项 | 涉及文件 | 具体内容 |
+|--------|---------|---------|
+| CFG.POISONMIST 数值常量块 | `src/core/config.js` | 完整的毒雾配置参数（基础/进化/协同） |
+| PoisonMist/CorrosiveDomain/PlagueMagnet 类 | `src/weapons/registry.js` | 3 个新武器类 |
+| Enemy 新增 `_poison` 动态字段 | `src/entities/enemy.js` | 毒叠层标记（stacks/timer/dotTimer） |
+| 毒叠层视觉绘制 | `src/entities/enemy.js` | 绿色覆盖 + 毒泡 |
+| 毒杀宝石加成 | `src/game.js` | 剧毒炼金协同 |
+| Player 猛毒护甲减伤 | `src/entities/Player.js` | takeDamage 中检查 poisonmist_armor |
+| Player 腐蚀再生 | `src/entities/Player.js` | 再生计时器中检查 poisonmist_regen |
+| CFG.SYNERGIES 新增 3 条 | `src/core/config.js` | 猛毒护甲/腐蚀再生/剧毒炼金 |
+| CFG.WEAPONS 新增 3 个 | `src/core/config.js` | poisonmist/corrosivedomain/plaguemagnet |
+| CFG.EVOLUTIONS 新增 2 条 | `src/core/config.js` | 毒雾+圣经/毒雾+磁铁 |
+
+### 一、Enemy 新增 `_poison` 动态字段对序列化接口的影响
+
+毒雾武器引入新的敌人动态状态字段 `_poison`，与现有的 `_burn`（火焰法杖点燃）和 `_frozen`/`_slow`（冰冻光环）类似。
+
+```typescript
+// 设计规格定义的 _poison 结构
+e._poison = {
+  stacks: number,    // 当前毒叠层 (0-maxStacks)
+  timer: number,     // 叠层检查计时器 (秒)
+  dotTimer: number,  // 离开毒雾后衰减计时器 (秒)
+}
+```
+
+**序列化接口规格书影响**：`EnemySnap` 需新增可选字段。
+
+```typescript
+interface EnemySnap {
+  // ... 现有字段 ...
+  poison?: {                // 可选字段，仅毒雾武器存在时有值
+    stacks: number;         // 毒叠层 (0-6, 整数)
+    dotTimer: number;       // 衰减计时器 (秒, 1位小数)
+  };
+  // 注意: timer 不需要序列化 -- 它是叠层检查的内部计时器，
+  // 反序列化后从 0 重新开始即可（下一个 stackInterval 会自动触发）
+}
+```
+
+**与现有 `_burn` 序列化方案的对照**：
+
+| 字段 | 结构 | 序列化策略 | 理由 |
+|------|------|-----------|------|
+| `_burn` | `{ dmg, t }` | `{ dmg, t }` (已有序列化) | dmg 影响伤害输出，t 决定持续时间 |
+| `_poison` | `{ stacks, timer, dotTimer }` | `{ stacks, dotTimer }` (timer 不序列化) | stacks 决定 DPS，dotTimer 决定衰减；timer 是内部节拍器，可丢弃 |
+| `_frozen` | `number` | `number` (已有序列化) | 简单倒计时 |
+| `_slow` / `_slowTimer` | `number` x2 | 已有序列化 | 减速百分比 + 计时器 |
+
+**快照大小影响**：每个有 _poison 的敌人约增加 25B。毒雾范围内通常 10-20 个敌人，额外增加 250-500B，可忽略。
+
+**关键问题：毒叠层击杀判定的来源归属**
+
+毒雾的 DOT 伤害调用 `e.hurt()`，但 `hurt()` 内部不追踪伤害来源。当毒 DOT 杀死敌人时，`game.js` 中的击杀处理链路需要判定"这次击杀是否来自毒雾"，原因：
+
+1. 剧毒炼金协同（poisonmist_luckycoin）需要在毒杀时增加宝石掉落价值
+2. 击杀统计、连击系统、金币计算等需要正确归属
+
+当前 `_burn` 击杀的判定方式是检查 `e._burn && e._burn.t > 0`（在 game.js 的击杀处理中）。毒杀判定应采用相同模式：`e._poison && e._poison.stacks > 0`。
+
+**服务器端影响**：毒 DOT 伤害计算是纯算术运算（`baseDps + stacks * stackDps * dt`），无随机因素。服务器端 import 同一份 `config.js` 获取 CFG.POISONMIST 参数即可确定性复现。
+
+### 二、PoisonMist 武器类对快照格式的序列化影响
+
+#### 2.1 基础武器 PoisonMist
+
+PoisonMist 是"以玩家为中心的被动光环"型武器，与冰冻光环(FrostAura)架构类似。它不产生独立子弹（不推入 `game.bullets[]`），不使用 `weapon.projectiles[]`。
+
+**内部状态**：
+
+| 字段 | 类型 | 序列化需求 |
+|------|------|-----------|
+| `pulseTimer` | `number` | 不序列化 -- 纯视觉脉冲计时器 |
+| `particles[]` | `object[]` | 不序列化 -- 纯视觉气泡粒子 |
+
+**WeaponSnap 格式**：无变更。PoisonMist 的 `WeaponSnap` 与其他光环型武器相同：`{ name: 'poisonmist', level: 1-3, timer: float }`。timer 字段对光环型武器没有实际用途（攻击由范围触发而非计时器触发），但格式统一。
+
+**结论**：基础 PoisonMist 对序列化格式无新增影响。
+
+#### 2.2 进化武器 CorrosiveDomain（腐蚀领域）
+
+CorrosiveDomain 引入了 3 个旋转毒球，使用内部 `projectiles[]` 数组管理。
+
+**毒球结构**（类比圣经 Bible 的旋转球体）：
+
+| 字段 | 类型 | 序列化需求 |
+|------|------|-----------|
+| `x, y` | `number` | 需要序列化 -- 位置影响碰撞判定 |
+| `angle` | `number` | 可选 -- 可从 x/y 和旋转半径推算 |
+| `rotAngle` | `number` | 不序列化 -- 纯视觉旋转角度 |
+
+**关键分析**：圣经(Bible)的旋转球体当前也不序列化（圣经 orbs 的伤害已反映在 enemies 的 hp 变化中）。CorrosiveDomain 的毒球同理 -- 毒球碰撞伤害通过 `e.hurt()` 即时执行，已经体现在 enemy 状态变化中。
+
+**联机处理策略**：
+
+| 方案 | 描述 | 推荐 |
+|------|------|------|
+| A: 不序列化毒球 | 依赖服务器端运行 CorrosiveDomain，伤害体现在 enemy hp 变化中 | MVP 阶段 |
+| B: 序列化毒球位置 | 客户端可精确渲染毒球位置，减少视觉跳跃 | Phase 2 |
+
+**推荐方案 A**，理由：与 Bible orbs 的处理一致。毒球碰撞伤害是确定性的（基于角度和旋转速度），服务器端运行后 enemy hp 快照已包含伤害结果。客户端从快照渲染时可以本地计算毒球位置（纯算术，从 angle += rotSpeed * dt 得出）。
+
+#### 2.3 进化武器 PlagueMagnet（瘟疫磁力）
+
+PlagueMagnet 新增"毒雾范围内宝石吸引"机制。这影响 `GemSnap` 吗？
+
+**分析**：宝石吸引是物理运动（宝石向玩家移动），不是宝石自身的状态变化。在半授权模型中：
+
+- 服务器端运行 PlagueMagnet 逻辑，每 tick 更新范围内宝石的位置
+- 宝石位置变化包含在 GemSnap 中（已有序列化覆盖）
+- 客户端从快照获取宝石新位置，直接渲染
+
+**结论**：PlagueMagnet 的宝石吸引通过已有的 GemSnap 位置更新实现，无需新增字段。但服务器端的宝石移动逻辑需要实现：
+
+```typescript
+// 服务器端：PlagueMagnet 宝石吸引逻辑
+function updatePlagueMagnetGems(gameState: ServerGameState) {
+  const pmWeapon = gameState.player.weapons.find(w => w.name === 'plaguemagnet');
+  if (!pmWeapon) return;
+  const cfg = CFG.POISONMIST.plaguemagnet;
+  for (const gem of gameState.gems) {
+    const d = dist(gameState.player, gem);
+    if (d < cfg.radius && d > 0) {
+      // 宝石向玩家移动
+      const dx = gameState.player.x - gem.x;
+      const dy = gameState.player.y - gem.y;
+      const speed = cfg.gemPullSpeed * dt;
+      gem.x += (dx / d) * Math.min(speed, d);
+      gem.y += (dy / d) * Math.min(speed, d);
+    }
+  }
+}
+```
+
+### 三、3 个新 Synergy 对序列化的影响
+
+#### 3.1 activeSynergies 扩展（18 -> 21 种）
+
+| 新 Synergy | 标识符 | 效果类型 |
+|-----------|--------|---------|
+| 猛毒护甲 | `poisonmist_armor` | 玩家受伤减少 20%（毒雾范围内） |
+| 腐蚀再生 | `poisonmist_regen` | 再生速度翻倍（毒雾范围内） |
+| 剧毒炼金 | `poisonmist_luckycoin` | 毒杀敌人宝石价值 +1 |
+
+`activeSynergies` 序列化为 `string[]`（已确定方案），新增 3 个字符串标识符约增加 45-60B，可忽略。
+
+#### 3.2 协同效果对服务器端逻辑的影响
+
+| 新协同 | 效果类型 | 服务器端复现复杂度 | 说明 |
+|--------|---------|-------------------|------|
+| poisonmist_armor | 受伤减免 | 低 | 纯数值乘法 `dmg *= 0.8`，条件为持有毒雾武器 |
+| poisonmist_regen | 再生加速 | 低 | 再生间隔除以 2，条件为持有毒雾武器 |
+| poisonmist_luckycoin | 击杀宝石加成 | 低 | 检查 `_poison.stacks > 0` + 固定值加成 |
+
+3 个协同全部为数值加成（低复现复杂度），与现有的 18 种协同保持一致。
+
+#### 3.3 对 getWeaponBonus() 的影响
+
+3 个新协同中 2 个定义了 `weaponBonus`：
+
+```js
+poisonmist_armor: { weaponBonus: { damageReduction: 0.2 } }
+poisonmist_regen: { weaponBonus: { regenSpeedMul: 2 } }
+poisonmist_luckycoin: { weaponBonus: { poisonKillGemBonus: 1 } }
+```
+
+新增 3 种 bonus 字段类型。服务器端 `getWeaponBonus()` 复现时需支持。当前 `weaponBonus` 字段类型约 18 种（含 Drive #23 新增 4 种），累计约 21 种。
+
+### 四、毒与火的独立性对联机一致性的意义
+
+设计规格明确："毒与火是独立 DOT 系统，两者可以同时存在。"这意味着：
+
+1. 敌人可以同时有 `_burn` 和 `_poison`，序列化时两者各自独立字段
+2. 两种 DOT 的伤害分别计算、分别调用 `hurt()`
+3. 服务器端无需处理两者之间的交互逻辑
+
+```typescript
+// 序列化时：两种 DOT 共存
+interface EnemySnap {
+  // ... 现有字段 ...
+  burn?: { dmg: number; t: number };      // 已有（火焰法杖）
+  poison?: { stacks: number; dotTimer: number };  // 新增（毒雾）
+}
+```
+
+**最坏情况快照**：一个敌人同时有 burn + poison = 额外约 50B。在 100 个敌人中假设 30% 同时有两种 DOT = 额外 1.5KB，仍在带宽预算内。
+
+### 五、快照大小更新汇总
+
+| 变更项 | 额外大小 | 说明 |
+|--------|---------|------|
+| EnemySnap.poison（10-20 个敌人） | +250-500B | poison 结构每条约 25B |
+| EnemySnap 同时 burn+poison（~30 个敌人） | +1.5KB | 最坏情况额外 burn 开销 |
+| activeSynergies +3 标识符 | +45-60B | 新增 3 个协同 ID |
+| WeaponSnap x3（毒雾系列） | +0B | 格式无变化，只是 name 字段多了 3 个可能值 |
+| CorrosiveDomain 毒球 | +0B | MVP 阶段不序列化，依赖服务器端运行 |
+| PlagueMagnet 宝石吸引 | +0B | 通过已有 GemSnap 位置更新实现 |
+
+**总快照大小变化**：从 ~6.1KB 增加到 ~6.3-7.6KB（取决于 burn/poison 共存比例），仍在带宽预算内（60KB/s 下行）。
+
+### 六、对序列化接口规格书的影响汇总
+
+| 规格书部分 | 更新项 | 说明 |
+|-----------|--------|------|
+| EnemySnap | 新增 `poison?: { stacks, dotTimer }` | 可选字段，仅毒雾武器存在时有值 |
+| snapshot() 函数 | enemyState() 新增 poison 条件分支 | 约 3 行代码（与 burn 分支对称） |
+| 快照大小估算 | 从 ~6.1KB 更新为 ~6.3-7.6KB（含 burn+poison 共存） | 仍在预算内 |
+| WeaponSnap | name 字段新增 3 个可能值 | 格式无变更 |
+
+### 七、对网络协议规格书的影响
+
+| 协议部分 | 更新项 | 说明 |
+|---------|--------|------|
+| ServerSnapshot | EnemySnap 新增 poison 可选字段 | 与序列化规格书同步 |
+| 毒雾武器 SyncCategory | 与 FrostAura 同类（光环型，无子弹/投射物） | 不产生独立网络实体 |
+
+### 八、服务器端逻辑复现评估
+
+毒雾武器对服务器端新增的逻辑复现需求：
+
+| 逻辑 | 复杂度 | 说明 |
+|------|--------|------|
+| PoisonMist DOT 叠层计算 | 低 | 纯算术：距离判定 + stacks 递增 + DPS 乘法 |
+| CorrosiveDomain 毒球旋转 | 中 | 需实现 3 个球体的旋转和碰撞检测 |
+| PlagueMagnet 宝石吸引 | 低 | 简单位移计算 |
+| poisonmist_armor 减伤 | 低 | 单行条件判断 |
+| poisonmist_regen 再生加速 | 低 | 单行条件判断 |
+| poisonmist_luckycoin 宝石加成 | 低 | 击杀时条件判断 |
+
+**毒球旋转**是最复杂的部分，但可以复用 Bible 的旋转球体逻辑（角度 + 半径 + 碰撞检测），实现成本可控。
+
+**关键决策**：毒雾武器的 DOT 叠层计算在半授权模型中由服务器端驱动。理由与火焰法杖 `_burn` 一致：
+
+1. DOT 伤害影响敌人 HP（权威状态），必须由服务器端计算
+2. 叠层数影响最终伤害输出，服务器端需要精确追踪
+3. 毒杀判定（`_poison.stacks > 0`）用于剧毒炼金协同，需要服务器端验证
+
+### 九、阻塞状态复查（连续第 13 次）
+
+| 后端产出物 | 状态 | 前端依赖 |
+|-----------|------|---------|
+| 联机技术调研报告 | 完成 | 无 |
+| 联机架构设计规格书 | 完成 | 无 |
+| 网络协议详细规格书 | **需更新（无尽模式字段 + 毒雾 poison 字段）** | 前端评审 |
+| 联机前置任务清单 | 完成 | 无（已交付前端参考） |
+| 序列化接口规格书 | **需更新（无尽模式 + critDmgBonus/goldDropBonus + BoomerangSnap + poison 字段 + 9 新协同）** | 前端评审 + 实现 |
+| Player 拆分方案 | 设计完成 | 前端评审 + 实现 |
+| 服务器 MVP 原型 | 评估完成 | 依赖上述两项前端实现 |
+
+前端当前版本 v1.6.1，毒雾武器设计规格已就绪（v2.1 规划）。Player 拆分仍未排入前端迭代计划。
+
+### 十、建议汇总
+
+| 建议 | 优先级 | 阶段 | 说明 |
+|------|--------|------|------|
+| EnemySnap 新增 poison 可选字段 | 中 | 序列化更新 | 与 burn 字段对称处理 |
+| CorrosiveDomain 毒球 MVP 阶段不序列化 | 中 | 联机 MVP | 依赖服务器端运行，伤害体现在 enemy hp 中 |
+| PlagueMagnet 宝石吸引用已有 GemSnap 覆盖 | 低 | 联机 MVP | 无需新增字段 |
+| 提取 DOT 伤害计算为共享函数 | 低 | 前端重构 | `calcDOT(baseDps, stacks, stackDps, dt)` 前后端共用 |
+| 毒/火双 DOT 击杀归属提取为辅助函数 | 低 | 前端重构 | `getKillSource(enemy)` 返回 'burn'/'poison'/'direct'，简化击杀链路 |
+
+### 决策记录
+
+- 毒雾武器引入 `_poison` 敌人动态字段，EnemySnap 需新增 `poison?: { stacks, dotTimer }` 可选字段，与现有 `burn` 字段对称处理
+- CorrosiveDomain 的旋转毒球与 Bible 的旋转球体采用相同策略：MVP 阶段不序列化，依赖服务器端运行并通过 enemy hp 变化体现伤害
+- PlagueMagnet 的宝石吸引通过已有序列化机制（GemSnap 位置更新）覆盖，无需新增字段
+- 3 个新协同（猛毒护甲/腐蚀再生/剧毒炼金）全部为数值加成，服务器端复现复杂度低
+- 毒/火双 DOT 独立性意味着序列化和服务器端逻辑无需处理两者交互，降低了实现复杂度
+- 快照大小从 ~6.1KB 增加到 ~6.3-7.6KB（取决于 DOT 共存比例），仍在带宽预算内
+- 连续第 13 次阻塞确认。后端设计产出物已完备，等待前端排入 Player 拆分和序列化实现
 
 ---
 
