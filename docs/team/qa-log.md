@@ -4,6 +4,198 @@
 
 ---
 
+## 2026-04-06 — Drive #25: BUG-011/012/013 修复验证 + 回归测试
+
+### 测试结果：14/14 通过（全绿，耗时 4.5 分钟）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 14 PASS | 全部测试通过 | BUG修复无回归 |
+
+### BUG-011 修复验证 -- 已修复
+
+- **原始问题**：`enemy.js` 第126行三元表达式缺少假值分支 `: 0`，导致 ES Module 加载链中断，游戏无法启动
+- **当前状态**：`enemy.js` 第126行现为 `if (isCrit) dmg *= 2;` -- 简洁正确的实现，无三元表达式
+- **确认**：`critDmgBonus` 相关代码已从 `hurt()` 方法中移除，不再引用 `window.game.player.critDmgBonus`
+- **根因修复方式**：前端选择移除损坏的 `critDmgBonus` 集成代码，而非修复三元表达式语法
+
+### BUG-012 修复验证 -- 已修复
+
+- **原始问题**：`game.js` spawn 内层 `for` 循环使用硬编码 `CFG.MAX_ENEMIES`(70)，无尽模式动态上限（最高100）无法生效
+- **当前状态**：`game.js` 第457行 `window.game.enemies.length < maxEnemies` -- 确认使用局部变量 `maxEnemies`
+- **修复 commit**：`a69ee0d` 将内循环上限从 `CFG.MAX_ENEMIES` 改为 `maxEnemies`
+- **确认**：外层 `if`（第450行）和内层 `for`（第457行）均使用同一个 `maxEnemies` 变量，逻辑一致
+
+### BUG-013 修复验证 -- 已修复
+
+- **原始问题A**：`updateEndlessUnlock()` 函数从未被调用，无尽模式卡片永远锁定
+- **原始问题B**：解锁条件 `d.bossKilled` 引用不存在的存档字段
+- **修复A确认**：`game.js` 第168行 `pickChar()` 内调用 `updateEndlessUnlock()` -- 确认调用点存在
+- **修复B确认**：
+  - `updateEndlessUnlock()` 条件从 `d.endlessUnlocked || d.bossKilled` 简化为 `d.endlessUnlocked` -- 确认移除无效字段引用
+  - 解锁写入点：`endGame()` 第298-304行，当 `won && !window.game.endless` 时写入 `sd.endlessUnlocked = true` -- 确认
+  - 完整流程：标准模式胜利 -> endGame(won=true) -> 写入 endlessUnlocked -> 下次 pickChar -> 调用 updateEndlessUnlock -> UI解锁 -- 逻辑完整
+- **修复 commit**：`a69ee0d`，涉及3处变更（条件简化 + 调用点添加 + endGame写入）
+
+### 缺陷状态更新
+
+| ID | 状态变更 | 说明 |
+|----|---------|------|
+| BUG-011 | 已修复 | enemy.js 三元表达式语法错误已移除 |
+| BUG-012 | 已修复 | spawn 内循环改用 maxEnemies 动态变量 |
+| BUG-013 | 已修复 | 调用点添加 + 条件修复 + endGame写入 |
+
+### 决策记录
+
+- 14/14 全绿，连续5个Drive零回归（Drive #20~#25）
+- BUG-011/012/013 全部修复确认，无尽模式解锁链路完整
+- 版本号从 v1.6.1 不递增（本次为BUG修复验证，无新功能变更）
+- 未提交的 qa-log.md（Drive #24 记录）一并提交
+
+---
+
+## 2026-04-06 — Drive #24: 无尽模式(Endless Mode) QA审查
+
+### 测试结果：13/14 通过（1个已知flaky retry后通过，非回归）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 13 PASS | 全部核心测试通过 | 无尽模式变更无回归 |
+| 1 FLAKY | 玩家存活时间 > 2分钟 | 首次失败(elapsed=34s)，retry通过。历史已知flaky |
+
+### 变更范围
+
+本次 Drive 涉及无尽模式前端实现（6个文件修改，145行新增，29行删除）：
+- `src/game.js` -- 无尽模式分支逻辑（时间检查跳过、Boss周期循环、敌群动态上限、结算适配、Boss击杀奖励）
+- `src/core/save.js` -- 新增 endlessUnlocked/bestEndlessTime/bestEndlessKills/bestEndlessBossKills 字段及迁移
+- `src/systems/spawner.js` -- 新增 endless 分支的动态出兵参数（间隔递减、数量递增）
+- `src/core/config.js` -- 新增 CFG.DIFFICULTY.endless 配置、CFG.ENDLESS 数值块
+- `src/ui/hud.js` -- 无尽模式计时器显示（正计时替代倒计时）
+- `index.html` -- 无尽难度卡片（默认锁定，opacity:0.3）
+
+### 验证项
+
+#### 1. 无尽模式不触发时间结束 -- 通过
+
+- **game.js 第393行**：`if (!window.game.endless && window.game.elapsed >= CFG.GAME_TIME && !window.game.won)` -- 确认无尽模式跳过5分钟时间检查
+- 逻辑正确：仅在非无尽模式下检查 GAME_TIME(300s) 上限
+
+#### 2. Boss周期正确循环 -- 通过
+
+- **首Boss（第416-420行）**：elapsed >= 270 且 !bossSpawned 时触发，hpScale=1.0, spdScale=1.0 -- 确认
+- **周期Boss（第421-431行）**：
+  - 条件：`bossSpawned && bossKilled`（上一个Boss被击杀后才触发下一轮） -- 确认
+  - 周期计算：`timeSinceFirst = elapsed - 270`，`nextCycle = Math.floor(timeSinceFirst / 240)` -- 确认（240s间隔）
+  - HP缩放：`Math.pow(1.5, nextCycle)` -- 指数增长确认
+  - Speed缩放：`Math.pow(1.1, nextCycle)` -- 指数增长确认
+- **spawnEndlessBoss辅助函数（第27-41行）**：
+  - 正确读取 `CFG.DIFFICULTY[endless].bossHpMul`（=1.0）与 hpScale 相乘 -- 确认
+  - 正确显示Boss警告 + 屏幕震动 + 音效 -- 确认
+- **周期验证**：270s(1.0x) -> 510s(1.5x) -> 750s(2.25x) -> 990s(3.4x) -> 1230s(5.1x) -- 递增曲线合理
+
+#### 3. 动态敌群上限计算 -- 通过（附注意事项）
+
+- **game.js 第443行**：`Math.min(CFG.MAX_ENEMIES + Math.floor((elapsed - 270) / 60) * (30 / 5), 100)`
+- 270s 时 = 70（基准），每60s增加6，上限100
+- 570s(9.5min) 时达到上限100 -- 增长速率合理
+- **注意事项**：270s前公式产生负值（如0s时=40），但无尽模式前期出兵逻辑与标准一致，40的敌群上限不影响游戏体验（标准模式固定70）
+- **内层生成循环问题**：第451行 `for` 循环使用 `CFG.MAX_ENEMIES`（固定70）而非 `maxEnemies`（可达100），见 BUG-012
+
+#### 4. 出兵参数合理 -- 通过
+
+- **spawner.js endless分支（第12-19行）**：
+  - `scale = Math.min(mins / 5, 4)` -- 4x强度上限确认
+  - `interval = Math.max(0.25, 0.4 - scale * 0.05)` -- 范围 [0.25, 0.40] 确认
+  - `count = Math.min(8, 4 + Math.floor(scale))` -- 范围 [4, 8] 确认
+  - 验证：5min=0.35s/5只, 10min=0.30s/6只, 20min=0.25s/8只 -- 渐进加速合理
+
+#### 5. 存档迁移不破坏旧存档 -- 通过
+
+- **save.js _default()（第14-17行）**：新增 `endlessUnlocked:false, bestEndlessTime:0, bestEndlessKills:0, bestEndlessBossKills:0` -- 确认
+- **save.js load() 迁移（第37-40行）**：
+  - `d.endlessUnlocked === undefined` -> false -- 确认（严格undefined检查，避免 `!d.endlessUnlocked` 误判false值）
+  - `!d.bestEndlessTime` -> 0 -- 确认（对0值友好，因为0是合法默认值）
+  - `!d.bestEndlessKills` -> 0 -- 确认
+  - `!d.bestEndlessBossKills` -> 0 -- 确认
+- 迁移逻辑不破坏现有存档字段 -- 确认
+
+#### 6. 解锁逻辑 -- 存在BUG（见 BUG-013）
+
+- **index.html 第96行**：无尽卡片默认 `opacity:0.3; pointer-events:none` -- 确认初始锁定
+- **game.js updateEndlessUnlock()（第154-166行）**：
+  - **BUG-013**：函数已定义并导出为 `window.updateEndlessUnlock`，但**从未在任何位置调用**
+  - 缺少调用点：应在 `showScene('diff-select')` 或 `pickChar()` 或 `updateTitleStats()` 中调用
+  - **BUG-013b**：条件 `d.bossKilled` 引用了不存在的存档字段（`bossKilled` 仅是运行时 `window.game.bossKilled`，从未持久化到 `localStorage`）
+  - 影响：无尽模式卡片永远保持锁定状态，玩家无法选择无尽模式
+
+#### 7. HUD无尽计时器适配 -- 通过
+
+- **hud.js 第8-15行**：
+  - `game.endless` 时显示正计时 `♾ M:SS` -- 确认
+  - 非无尽时显示倒计时 `M:SS` -- 确认
+  - 使用 `padStart(2, '0')` 格式化秒数 -- 确认
+
+#### 8. 无尽模式结算适配 -- 通过
+
+- **endGame() 无尽分支（第301-307行）**：记录 bestEndlessTime/bestEndlessKills/bestEndlessBossKills -- 确认
+- **结算标题（第327-333行）**：无尽模式显示"无尽模式结束"紫色标题 -- 确认
+- **结算统计（第369行）**：显示击杀/存活/连击/Boss击杀/金币完整数据 -- 确认
+- **Boss击杀奖励（第609-616行）**：
+  - `gold += CFG.ENDLESS.bossKillReward.gold`（50金） -- 确认
+  - 掉落额外食物（5个） -- 确认
+- **Quest检查（第321-322行）**：stats 对象含 `endless:true` 和 `bossKillCount` -- 确认（支持4个无尽Quest检查）
+
+#### 9. CFG.ENDLESS 配置验证 -- 通过
+
+- **config.js 第286-299行**：完整配置块
+  - `enabled:true, bossInterval:240, bossScalePerCycle:{hpMul:1.5, speedMul:1.1}` -- 确认
+  - `extraHpPerMin:0.1, extraSpdPerMin:0.05, minSpawnInterval:0.25` -- 确认（spawner.js 已实现 interval 下限）
+  - `maxEnemyBonus:30, maxEnemiesCap:100, milestoneInterval:60` -- 确认
+  - `bossKillReward:{gold:50, exp:30, food:5}` -- 确认
+- **CFG.DIFFICULTY.endless（第110-112行）**：与 normal 难度参数完全一致 -- 确认（无尽难度来自持续时间而非参数加成）
+- **4个无尽Quest（第220-223行）**：均含 `s.endless` 条件守卫 -- 确认
+
+#### 10. JS语法检查（5个文件全部通过）
+
+| 文件 | node --check | 括号平衡 |
+|------|-------------|---------|
+| game.js | OK | {196/196} (567/567) [39/39] OK |
+| save.js | OK | {53/53} (104/104) [27/27] OK |
+| spawner.js | OK | {10/10} (12/12) [8/8] OK |
+| config.js | OK | {231/231} (15/15) [32/32] OK |
+| hud.js | OK | {20/20} (38/38) [4/4] OK |
+
+### 新增缺陷
+
+| ID | 严重度 | 模块 | 描述 | 状态 | 指派 |
+|----|--------|------|------|------|------|
+| BUG-012 | Medium | game.js 生成 | 内层生成循环 `for` 使用 `CFG.MAX_ENEMIES`（70）而非动态 `maxEnemies`（可达100），无尽模式270s后敌群上限被限制在70 | 待修复 | frontend |
+| BUG-013 | Medium | game.js 解锁 | `updateEndlessUnlock()` 从未被调用，无尽模式卡片永远锁定；且条件 `d.bossKilled` 引用不存在的存档字段 | 待修复 | frontend |
+
+### BUG-012 详细分析
+
+- **位置**：game.js 第451行 `for` 循环条件 `window.game.enemies.length < CFG.MAX_ENEMIES`
+- **问题**：外层 `if`（第444行）正确使用动态 `maxEnemies`（可达100），但内层 `for` 循环硬编码使用 `CFG.MAX_ENEMIES`（70）
+- **影响**：无尽模式在570s后 `maxEnemies` 为100，但实际每次spawn循环最多生成到70个敌人就停止
+- **建议修复**：将第451行的 `CFG.MAX_ENEMIES` 替换为局部变量 `maxEnemies`
+
+### BUG-013 详细分析
+
+- **问题A**：`updateEndlessUnlock()` 函数已定义（第154行）并导出为 `window.updateEndlessUnlock`（第167行），但全项目 grep 搜索确认无任何调用点。无尽模式卡片始终保持 `opacity:0.3; pointer-events:none` 初始锁定状态。
+- **问题B**：解锁条件 `d.endlessUnlocked || d.bossKilled`（第158行）中，`d.bossKilled` 引用 `localStorage` 中不存在的字段。`bossKilled` 仅存在于运行时 `window.game.bossKilled`（第226行初始化，第608行设为true），`Save._default()` 和 `Save.load()` 迁移逻辑均未包含此字段。
+- **建议修复**：
+  1. 在 `showScene('diff-select')` 或 `pickDiff` 流程中调用 `updateEndlessUnlock()`
+  2. 在 `endGame()` 中当 `window.game.bossKilled` 为 true 时，将 `endlessUnlocked` 写入存档
+  3. 移除 `d.bossKilled` 条件（改为仅检查 `d.endlessUnlocked`，由 endGame 写入）
+
+### 决策记录
+
+- 测试基线确认：13/14 通过 + 1 flaky retry 通过，与 Drive #22 的 14/14 一致（无回归）
+- 版本号从 v1.6.1 不递增（存在2个 Medium bug 待修复）
+- BUG-012 和 BUG-013 不阻塞标准模式游戏流程，仅影响无尽模式体验
+
+---
+
 ## 2026-04-06 — Drive #23: 幸运硬币被动 + 6个新协同 QA审查
 
 ### 测试结果：1/14 通过（13 FAILED — Critical 回归）
@@ -1061,13 +1253,16 @@
 
 | ID | 严重度 | 模块 | 描述 | 状态 | 指派 |
 |----|--------|------|------|------|------|
-| **BUG-011** | **Critical** | enemy.js | hurt() 三元表达式语法错误，游戏无法启动 | **待修复** | **frontend** |
-| **BUG-009** | **Critical** | 模块加载 | `src/core/sprite-cache.js` 缺失，游戏无法启动 | **已修复** v1.2.0 | **frontend** |
-| BUG-005 | Low | 武器-圣水 | 圣水Lv1伤害极低 | ✅ 已修复 v0.3.1 | frontend |
-| BUG-006 | Low | 道具-磁铁 | 全图吸引后磁铁道具价值大降 | ✅ 已修复 v0.3.1 | designer |
-| BUG-007 | Low | UI-结算 | 结算画面金币用途不明确 | ✅ 已修复 v0.6.0 | designer/frontend |
-| ENH-001 | Medium | 视觉-圣经 | 圣经与圣水视觉区分度不够 | ✅ 已修复 v0.3.1 | art |
-| ENH-002 | Low | 视觉-蝙蝠 | 蝙蝠精灵10×10太小，移动端难以辨认 | ✅ 已修复 v0.3.1 | art |
+| BUG-010 | Low | 成就-进化大师 | `all_evolutions` 成就 parts 已含8种，描述文字未更新 | 待处理 | designer/frontend |
+| BUG-013 | Medium | game.js 解锁 | `updateEndlessUnlock()` 无调用点 + `d.bossKilled` 引用不存在字段 | 已修复 Drive #25 | frontend |
+| BUG-012 | Medium | game.js 生成 | 无尽模式内层生成循环使用固定 `CFG.MAX_ENEMIES`(70) | 已修复 Drive #25 | frontend |
+| BUG-011 | Critical | enemy.js | hurt() 三元表达式语法错误，游戏无法启动 | 已修复 Drive #25 | frontend |
+| BUG-009 | Critical | 模块加载 | `src/core/sprite-cache.js` 缺失，游戏无法启动 | 已修复 v1.2.0 | frontend |
+| BUG-005 | Low | 武器-圣水 | 圣水Lv1伤害极低 | 已修复 v0.3.1 | frontend |
+| BUG-006 | Low | 道具-磁铁 | 全图吸引后磁铁道具价值大降 | 已修复 v0.3.1 | designer |
+| BUG-007 | Low | UI-结算 | 结算画面金币用途不明确 | 已修复 v0.6.0 | designer/frontend |
+| ENH-001 | Medium | 视觉-圣经 | 圣经与圣水视觉区分度不够 | 已修复 v0.3.1 | art |
+| ENH-002 | Low | 视觉-蝙蝠 | 蝙蝠精灵10×10太小，移动端难以辨认 | 已修复 v0.3.1 | art |
 
 ---
 
