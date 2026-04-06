@@ -12,14 +12,391 @@
 | P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | ✅ 设计规格书完成 |
 | P1 | 网络协议详细规格书（消息定义/快照格式/断线重连） | ✅ Drive #11 完成 |
 | P1 | 联机前置任务清单（前端 1 页精简清单） | ✅ Drive #15 已输出 |
-| P1 | 序列化接口规格书（待积累更新：无尽模式 + critDmgBonus/goldDropBonus + 9新协同 + BoomerangSnap + 毒雾poison + 2新敌人 + 4关卡敌人 + 2新Boss + stageId + secrets + skills面板 + Weapon Mastery + Pet/伙伴系统） | ⚠️ Drive #29 评估：Pet新增PetSnap+PetBulletSnap，累积更新项增至24项 |
+| P1 | 序列化接口规格书（待积累更新：无尽模式 + critDmgBonus/goldDropBonus + 9新协同 + BoomerangSnap + 毒雾poison + 2新敌人 + 4关卡敌人 + 2新Boss + stageId + secrets + skills面板 + Weapon Mastery + Pet/伙伴系统 + Ultimate系统） | ⚠️ Drive #30 评估：Ultimate新增UltimateSnap/UltimateMissileSnap/力场效果，累积更新项增至28项 |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，待前端实现 |
 | P1 | 无尽模式联机适配方案（房间生命周期/状态同步限流/存档验证） | ⚠️ Drive #24 评估完成，关键风险已识别，待联机阶段实施 |
 | P1 | 多关卡系统联机适配方案（房间stage参数/spawner改造/关卡敌人/Boss序列化） | ⚠️ Drive #27 评估完成，核心改造：spawner增加stage参数 + 房间数据新增stageId |
 | P1 | Weapon Mastery 联机影响预评估（weaponDmgMul持久化同步/服务器端验证） | ⚠️ Drive #28 预评估完成：weaponDmgMul已在Drive #12评估，Mastery是永久乘数，服务器端import同config即可 |
 | P1 | Pet/伙伴系统联机序列化影响评估（Pet跟随AI+投射物+控场+闪电链） | ⚠️ Drive #29 评估完成：新增PetSnap/PetBulletSnap/状态机字段，快照+~300-600B |
+| P1 | Ultimate/终极技能系统联机影响评估（充能同步+释放状态+投射物+力场效果） | ⚠️ Drive #30 评估完成：充能需服务器验证，释放状态需同步，新增UltimateSnap~50-200B/玩家 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | ⏳ 已评估，阻塞于 P1 前端实现 |
 | P2 | Docker 容器化部署方案 | 待评估（低优先级） |
+
+---
+
+## 2026-04-07 -- Drive #30: Ultimate/终极技能系统对联机架构的影响评估
+
+### 背景
+
+策划 Drive #30 完成了 v2.5 Ultimate/终极技能系统设计规格书（`docs/superpowers/specs/2026-04-06-ultimate-system-design.md`，448行），核心内容：
+
+1. **充能型角色专属大招**：击杀/受伤充能，满充能按 Q 释放，每局从零开始，不跨局保留
+2. **4 种 Ultimate 效果**：
+   - 魔法师 -- 奥术轰炸：10波导弹从天而降，40枚投射物，大范围清场
+   - 战士 -- 狂暴战意：自身 buff（x2伤害、x1.5攻速、无敌、+30%移速），5秒爆发
+   - 游侠 -- 箭雨风暴：42支箭矢360度环形扩散，突围型
+   - 暗影法师 -- 暗影裂隙：250px范围力场吸引+6DPS+减速，控场聚拢型
+3. **涉及文件变更**：config.js / game.js / Player.js / registry.js / scenes.js / input.js / hud.js / sfx.js（8个文件，~225行）
+4. **预期释放频率**：标准5分钟局约2次（~2:25首次、~3:50二次）
+
+当前版本 v1.6.5，Ultimate 系统设计规格已完成，尚未实现，属于 v2.5 规划。
+
+### 一、状态巡检
+
+- **当前版本**: v1.6.5
+- **QA 状态**: 所有缺陷已关闭，14/14 E2E 测试全绿
+- **后端产出物状态**: 所有设计规格书已完成，Player 拆分方案待前端实现，连续第 18 次阻塞确认
+- **序列化规格书累积更新项**: 截至 Drive #29 共 25 项（Pet 系统 3 项新增），本次 Ultimate 评估将追加更多
+
+### 二、Ultimate 充能追踪的联机同步分析
+
+#### 2.1 充能来源与服务器端验证需求
+
+设计规格定义的充能来源：
+
+| 来源 | 充能值 | 服务器端是否可验证 | 说明 |
+|------|--------|-------------------|------|
+| 击杀普通敌人 | +1.5% | 是 | 击杀判定在服务器端执行（半授权模型） |
+| 击杀精英敌人 | +5.0% | 是 | 精英标识从 CFG.ENEMY_TYPES 获取 |
+| 击杀 Boss | +12.0% | 是 | Boss 标识从 CFG.ENEMY_TYPES 获取 |
+| 受到伤害 | +1.0%/次 | 是 | 受伤判定在服务器端执行 |
+
+**关键结论：充能必须由服务器端计算。**
+
+理由：
+1. 充能来源于击杀和受伤，两者在半授权模型中均由服务器端权威判定
+2. 允许客户端自报充能值会带来作弊风险（伪造充能频繁释放 Ultimate）
+3. 服务器端自然拥有所有充能来源的信息（击杀事件、受伤事件），额外计算成本为零
+
+**联机时的充能流程**：
+
+```
+服务器端:
+  击杀敌人 -> 判断敌人类型(normal/elite/boss) -> 增加玩家充能
+  玩家受伤 -> 增加 1% 充能
+  充能 >= 100% -> 在快照中标记 ultimateReady = true
+  收到 input.ultimate = true && ultimateReady -> 激活 Ultimate
+```
+
+#### 2.2 PlayerSnap 新增 Ultimate 字段
+
+```typescript
+interface PlayerSnap {
+  // ... 现有字段（~30 个） ...
+  ultimateCharge?: number;       // 充能百分比 (0-100, 1位小数)
+  ultimateActive?: boolean;      // 是否正在释放
+  ultimateType?: string;         // 'arcane_barrage' | 'berserker_rage' | 'arrow_storm' | 'shadow_rift'
+  ultimateTimer?: number;        // 剩余持续时间（秒，1位小数）
+}
+```
+
+**字段说明**：
+
+| 字段 | 序列化条件 | 大小 | 说明 |
+|------|-----------|------|------|
+| `ultimateCharge` | 始终序列化（>0时） | ~15B | 远程客户端需渲染充能条 |
+| `ultimateActive` | 仅激活时 | ~15B | 远程客户端需渲染释放效果 |
+| `ultimateType` | 仅激活时 | ~20B | 决定释放视觉效果类型 |
+| `ultimateTimer` | 仅激活时 | ~10B | 控制释放效果持续时间 |
+
+**注意**：`ultimateType` 可以在角色选择时确定（charId -> ultimateType 映射关系固定），理论上可从 PlayerSnap.charId 推导。但为了远程客户端的渲染便利性，显式序列化更简洁。如果需要节省带宽，可省略 `ultimateType` 让客户端从 `charId` 查表。
+
+#### 2.3 充能不需要客户端预测
+
+充能值由服务器端权威计算，客户端每 tick 从快照获取。不需要客户端本地预测充能变化。理由：
+1. 充能是渐进式增长，不存在"充能跳变"的用户体验问题
+2. 10Hz 快照频率意味着充能值每 100ms 更新一次，视觉上充能条平滑递增
+3. 不预测充能可以防止客户端作弊（伪造满充能）
+
+### 三、4 种 Ultimate 效果的联机同步方案
+
+#### 3.1 奥术轰炸 (Arcane Barrage) -- 投射型
+
+**核心机制**：10 波 x 4 枚 = 40 枚导弹，从画面顶部飞向随机目标，命中后溅射 25px。
+
+**联机同步需求**：
+
+| 组件 | 序列化策略 | 说明 |
+|------|-----------|------|
+| 导弹位置/速度 | 需要序列化 | 导弹是碰撞实体，影响伤害判定 |
+| 目标选择 | 不序列化 | 服务器端选择目标，导弹轨迹由位置/速度决定 |
+| 溅射范围/伤害 | 不序列化 | 固定属性（CFG.ULTIMATE.mage.splashRadius/splashDamageMul） |
+| 波次计时器 | 不序列化 | 服务器端驱动波次生成 |
+| 视觉（紫色能量球/爆炸） | 不序列化 | 客户端本地渲染 |
+
+**新增 UltimateMissileSnap**：
+
+```typescript
+interface UltimateMissileSnap {
+  x: number;        // 整数像素
+  y: number;        // 整数像素
+  vx: number;       // 速度向量（整数）
+  vy: number;       // 速度向量（整数）
+  dmg: number;      // 伤害值（1位小数）
+  life: number;     // 剩余飞行距离（1位小数）
+  // splashRadius/splashDamageMul: 固定属性，从 CFG 获取
+  // targetX/targetY: 不需要序列化（导弹的飞行方向由 vx/vy 决定）
+}
+```
+
+**与 PetBulletSnap / BulletSnap 的关系**：UltimateMissileSnap 是又一种投射物，与 BulletSnap（标准子弹）和 PetBulletSnap（Pet 火球）类似但更简单：没有穿透、冰冻、点燃等额外效果，只有基础的 x/y/vx/vy/dmg/life。
+
+**快照大小影响**：
+
+| 场景 | 同时存在导弹数 | 单条大小 | 小计 |
+|------|--------------|---------|------|
+| 波次间隔 0.4s，导弹速度 600px/s | 最多 4-8 枚（1-2 波） | ~60B | 240-480B |
+| 全 10 波极端情况 | 不可能同时存在 | - | - |
+
+波次间隔 0.4s，导弹速度 600px/s，假设飞行距离 ~400px = 飞行时间 ~0.67s。波次间隔 < 飞行时间，同时最多 2 波 = 8 枚导弹。额外增加 ~480B。
+
+**建议**：将 UltimateMissileSnap 纳入 Drive #29 提出的 `collectInternalBullets()` 统一采集函数，与 Boomerang 投射物和 Pet 火球统一处理。
+
+#### 3.2 狂暴战意 (Berserker Rage) -- 自身 buff 型
+
+**核心机制**：5 秒内 x2 伤害、x1.5 攻速、无敌、+30% 移速。
+
+**联机同步需求**：
+
+| 组件 | 序列化策略 | 说明 |
+|------|-----------|------|
+| _ultimateActive 状态 | 已包含在 PlayerSnap.ultimateActive | 服务器端设置 |
+| 伤害倍率 | 不序列化 | 服务器端在 Weapon.applyDmg() 中检查 _ultimateActive 并应用 dmgMul |
+| 攻速倍率 | 不序列化 | 服务器端在武器 timer -= dt * attackSpeedMul 中应用 |
+| 无敌状态 | 不序列化 | 服务器端在 takeDamage() 中检查 _ultimateActive 跳过伤害 |
+| 移速加成 | 不序列化 | 服务器端在玩家移动计算中应用 speed *= 1.3 |
+| 视觉（红色光环/放大/拖尾） | 不序列化 | 客户端从 ultimateActive + charId 本地渲染 |
+
+**关键结论：狂暴战意不引入任何新的序列化字段。** 所有效果已体现在 PlayerSnap 现有字段中（位置变化由移速加成驱动、HP 不变由无敌驱动、敌人 HP 变化由伤害倍率驱动）。
+
+**服务器端逻辑复现**：
+
+```typescript
+// 服务器端：Weapon.applyDmg() 扩展
+applyDmg(base) {
+  const shopMul = this.weaponDmgMul || 1;
+  const masteryMul = 1 + (this.masteryBonus?.dmgBonus || 0);
+  const ultMul = (this.player._ultimateActive && this.player.ultimateType === 'berserker_rage') ? 2.0 : 1.0;
+  return base * shopMul * masteryMul * ultMul;
+}
+```
+
+这是对现有 `applyDmg()` 链路的又一次扩展：`base * weaponDmgMul * (1 + masteryDmgBonus) * ultimateDmgMul`。全部是静态乘数（由激活状态控制），确定性无问题。
+
+#### 3.3 箭雨风暴 (Arrow Storm) -- 环形投射型
+
+**核心机制**：3.5 秒内 42 支箭矢 360 度环形向外扩散，每支穿透 2 次。
+
+**联机同步需求**：与奥术轰炸类似，需要序列化投射物位置和速度。
+
+| 组件 | 序列化策略 | 说明 |
+|------|-----------|------|
+| 箭矢位置/速度 | 复用 UltimateMissileSnap | 相同结构：x/y/vx/vy/dmg/life |
+| 扩散角度 | 不序列化 | 已编码在 vx/vy 中 |
+| 穿透次数 | 不序列化 | 固定属性（CFG.ULTIMATE.ranger.arrowPierce = 2） |
+| 发射频率 | 不序列化 | 服务器端驱动发射 |
+| 视觉（绿色箭矢轨迹） | 不序列化 | 客户端本地渲染 |
+
+**快照大小影响**：
+
+| 场景 | 同时存在箭矢数 | 单条大小 | 小计 |
+|------|--------------|---------|------|
+| 12支/秒，速度120px/s，最大半径200px | ~1.67s寿命，同时约20支 | ~60B | ~1200B |
+
+箭雨风暴是 Ultimate 中快照开销最大的效果（~1200B 同时），但持续时间仅 3.5s，总开销可接受。
+
+**穿透处理**：箭矢穿透 2 次与 BulletSnap 的 pierce 字段相同，但 UltimateMissileSnap 不含 pierce 字段。MVP 阶段用 `hit: Set` 处理（不序列化，同现有子弹方案），或考虑增加 `pierce?: number` 可选字段。
+
+#### 3.4 暗影裂隙 (Shadow Rift) -- 力场型
+
+**核心机制**：4 秒内 250px 范围力场吸引敌人（60px/s）+ 6DPS + 40% 减速。
+
+**联机同步需求**：
+
+| 组件 | 序列化策略 | 说明 |
+|------|-----------|------|
+| 力场位置 | 从 PlayerSnap.x/y 获取 | 力场以玩家为中心 |
+| 力场半径/吸引速度/减速 | 不序列化 | 固定属性（CFG.ULTIMATE.shadow） |
+| 范围 DPS | 不序列化 | 服务器端计算伤害，体现在 EnemySnap.hp 变化中 |
+| 吸引效果 | 不序列化 | 服务器端修改敌人位置，体现在 EnemySnap.x/y 变化中 |
+
+**关键分析：暗影裂隙的"吸引敌人"是新的位置修改机制。**
+
+当前代码库中敌人位置的修改来源：
+- 敌人自身 AI 移动（moveToward 玩家）
+- 减速/冰冻效果（降低移动速度）
+- 闪电链跳跃（不改变位置）
+- 爆炸击退（Exploder，如果有击退的话）
+
+暗影裂隙引入"强制吸引"：范围内敌人每帧被拉向玩家（60px/s）。在半授权模型中，这个位置修改由服务器端执行：
+
+```typescript
+// 服务器端：暗影裂隙吸引逻辑
+function applyShadowRiftPull(gameState, dt) {
+  if (!gameState.player._ultimateActive || gameState.player.ultimateType !== 'shadow_rift') return;
+  const cfg = CFG.ULTIMATE.shadow;
+  for (const enemy of gameState.enemies) {
+    const d = dist(gameState.player, enemy);
+    if (d < cfg.pullRadius && d > 1) {
+      const dx = gameState.player.x - enemy.x;
+      const dy = gameState.player.y - enemy.y;
+      const pull = Math.min(cfg.pullSpeed * dt, d);
+      enemy.x += (dx / d) * pull;
+      enemy.y += (dy / d) * pull;
+    }
+  }
+}
+```
+
+吸引效果完全体现在 EnemySnap.x/y 的变化中。远程客户端不需要知道"暗影裂隙"正在生效，只需从快照中看到敌人位置变化即可正确渲染。但如果远程客户端要渲染"暗影触手拉拽线"视觉效果，需要知道 Ultimate 正在激活 -- 这个信息已包含在 PlayerSnap.ultimateActive + ultimateType 中。
+
+**减速与现有系统的交互**：暗影裂隙的 40% 减速与冰冻光环的减速取较大值（设计规格 8.3 节）。服务器端在 EnemySnap 中已有序列化 `_slow`/`_slowTimer` 字段，无需额外处理。
+
+**结论：暗影裂隙不引入新的序列化字段。** 力场吸引体现在敌人位置变化中，范围 DPS 体现在敌人 HP 变化中，减速体现在现有 `_slow` 字段中。
+
+### 四、释放触发的服务器端验证
+
+**释放流程**：
+
+```
+客户端:
+  按 Q / 点击 ULT -> 发送 { type: "input", ultimate: true } 给服务器
+
+服务器:
+  收到 input.ultimate = true
+  验证:
+    (1) player._ultimateCharge >= 100
+    (2) !player._ultimateActive (不能在释放中再次释放)
+    (3) player 有 Ultimate 能力（暗影法师需 Secrets 解锁）
+  验证通过:
+    设置 player._ultimateActive = true
+    设置 player.ultimateType = charId->ultimateType 映射
+    设置 player.ultimateTimer = CFG.ULTIMATE[charId].duration
+    重置 player._ultimateCharge = 0
+  下一个快照中包含更新后的 PlayerSnap.ultimateActive = true
+```
+
+**防作弊验证**：
+
+| 验证项 | 必要性 | 说明 |
+|--------|--------|------|
+| 充能值 >= 100% | 必须 | 防止客户端伪造满充能 |
+| 不在释放中 | 必须 | 防止连续释放 |
+| 暗影法师解锁检查 | 可选 | 暗影法师是 Secrets 隐藏角色，MVP 阶段可信任客户端 |
+| 角色拥有 Ultimate | 必须 | 理论上每个角色都有，但防御性检查 |
+
+### 五、gameStats.ultimate* 的联机影响
+
+设计规格定义的新增统计字段：
+
+| 字段 | 联机处理方式 | 说明 |
+|------|------------|------|
+| `ultimateUsed` | 各客户端独立追踪 | 个人统计 |
+| `ultimateKills` | 各客户端独立追踪 | 个人统计 |
+| `ultimateMaxKills` | 各客户端独立追踪 | 个人统计 |
+
+与成就/Secrets/Quest/Pet 击杀统计处理方式完全一致：纯客户端本地数据，联机时各客户端独立追踪。
+
+新增成就（ultimate_first / ultimate_massacre）和 Quest（ultimate_kill_20）同样是纯客户端 localStorage，联机时各客户端独立判定。
+
+### 六、快照大小更新汇总
+
+| 变更项 | 额外大小 | 说明 |
+|--------|---------|------|
+| PlayerSnap.ultimateCharge (始终) | +15B | 充能百分比 |
+| PlayerSnap.ultimateActive/ultimateType/ultimateTimer (激活时) | +45B | 仅释放期间 |
+| UltimateMissileSnap -- 奥术轰炸 (最多 8 枚) | +480B | 投射型，持续时间 4s |
+| UltimateMissileSnap -- 箭雨风暴 (最多 20 枚) | +1200B | 投射型，持续时间 3.5s |
+| 狂暴战意 | +0B | 无投射物，纯自身 buff |
+| 暗影裂隙 | +0B | 无投射物，力场效果体现在敌人位置/HP 变化中 |
+| gameStats.ultimate* | +0B | 纯客户端本地数据 |
+| Save 成就/Quest | +0B | 纯客户端本地数据 |
+| **单人基础** | **+15-60B** | 取决于是否激活 |
+| **单人含投射物（奥术轰炸）** | **+~500B** | 释放期间 |
+| **单人含投射物（箭雨风暴）** | **+~1200B** | 释放期间 |
+| **4 人最坏（全部释放箭雨风暴）** | **+~5000B** | 极端情况，短暂 |
+
+箭雨风暴是快照开销最大的 Ultimate 效果（4 人同时释放 ~5KB），但：
+1. 概率极低（4 人使用游侠角色且同时满充能）
+2. 持续仅 3.5s
+3. 总快照从 ~7.2-10.1KB 增加到 ~12-15KB，仍在带宽预算边缘
+
+**如果 4 人同时释放箭雨风暴导致快照超预算**，可选缓解措施：
+- 将投射物快照频率从 10Hz 降至 5Hz（仅 Ultimate 投射物），视觉上可接受
+- 视野裁剪进一步减少同步的投射物数量
+
+总快照大小维持 ~7.2-10.1KB（无 Ultimate 释放时），Ultimate 释放期间短暂增至 ~12-15KB（4 人极端情况）。仍在带宽预算的弹性范围内。
+
+### 七、序列化规格书累积更新项汇总
+
+| # | 来源 | 更新项 | Drive |
+|---|------|--------|-------|
+| 1-22 | （前序 Drive） | 见 Drive #29 汇总 | #24-#29 |
+| 23 | Pet 基础 | PlayerSnap 新增 pet?: PetSnap | #29 |
+| 24 | Pet 火球 | 新增 PetBulletSnap 子类型 | #29 |
+| 25 | Pet 状态机 | PetSnap.state 同步 | #29 |
+| **26** | **Ultimate 充能** | **PlayerSnap 新增 ultimateCharge/ultimateActive/ultimateType/ultimateTimer** | **#30** |
+| **27** | **Ultimate 投射物** | **新增 UltimateMissileSnap（奥术轰炸导弹 + 箭雨风暴箭矢）** | **#30** |
+| **28** | **Ultimate 力场** | **服务器端 applyShadowRiftPull() 位置修改（体现在 EnemySnap.x/y 中）** | **#30** |
+
+累积 28 项。Ultimate 系统贡献 3 项新增序列化需求。维持"累积更新，一次性合并"策略。
+
+### 八、服务器端逻辑复现评估
+
+| 逻辑 | 复杂度 | 说明 |
+|------|--------|------|
+| 充能计算（击杀/受伤事件 -> 增加充能） | 低 | 纯加法，判断敌人类型查 CFG |
+| 奥术轰炸波次生成（10波 x 4导弹） | 中 | 需实现 waveTimer + 随机目标选择 + 导弹创建 |
+| 导弹碰撞检测 + 溅射 | 中 | 复用现有碰撞框架 + 溅射范围判定 |
+| 狂暴战意乘数注入（applyDmg + attackSpeedMul + immune + speedMul） | 低 | 在已有 applyDmg() 链路追加条件判断 |
+| 箭雨风暴环形投射物生成 | 中 | 需实现角度均匀分配 + 扩散速度 + 发射频率 |
+| 暗影裂隙力场吸引（pull 位置修改） | 低 | 距离判定 + 位移计算，纯算术 |
+| 暗影裂隙范围 DPS | 低 | 距离判定 + hurt()，与 PoisonMist 同类 |
+| 充能/释放服务器端验证 | 低 | 条件检查，与升级选择验证同类 |
+
+**总体评估**：服务器端 Ultimate 逻辑复现复杂度为**低到中**。4 种效果中最复杂的是奥术轰炸和箭雨风暴的投射物管理，但可以复用 Boomerang/Pet 的投射物管理模式。
+
+**服务器端随机性控制**：奥术轰炸的"随机目标选择"在联机时需要统一随机源（服务器端 `Math.random()` 或确定性 PRNG），以保证所有客户端看到的导弹轨迹一致。箭雨风暴的角度均匀分配是确定性的（360 / N），无随机性。
+
+### 九、阻塞状态复查（连续第 18 次）
+
+| 后端产出物 | 状态 | 前端依赖 |
+|-----------|------|---------|
+| 联机技术调研报告 | 完成 | 无 |
+| 联机架构设计规格书 | 完成 | 无 |
+| 网络协议详细规格书 | **需更新（Ultimate 相关：input.ultimate 消息 + UltimateMissileSnap + 充能验证规则）** | 前端评审 |
+| 联机前置任务清单 | 完成 | 无（已交付前端参考） |
+| 序列化接口规格书 | **需更新（28 项累积更新，含 Ultimate 3 项新增）** | 前端评审 + 实现 |
+| Player 拆分方案 | 设计完成 | 前端评审 + 实现 |
+| 服务器 MVP 原型 | 评估完成 | 依赖上述两项前端实现 |
+
+前端当前版本 v1.6.5，v2.5 规划包含：Ultimate/终极技能系统。Player 拆分仍未排入前端迭代计划。
+
+### 十、建议汇总
+
+| 建议 | 优先级 | 阶段 | 说明 |
+|------|--------|------|------|
+| PlayerSnap 新增 ultimateCharge/ultimateActive/ultimateType/ultimateTimer | 中 | v2.5 序列化更新 | 充能和释放状态同步 |
+| 新增 UltimateMissileSnap 子类型 | 中 | v2.5 序列化更新 | 奥术轰炸导弹 + 箭雨风暴箭矢 |
+| Ultimate 投射物纳入 collectInternalBullets() 统一采集 | 低 | 序列化重构 | 与 Boomerang + Pet 投射物统一管理 |
+| 充能由服务器端权威计算 | 高 | 联机 MVP | 防作弊，服务器端自然拥有击杀/受伤事件 |
+| 释放需服务器端验证（充能>=100%、非激活中） | 高 | 联机 MVP | 标准权威验证 |
+| 狂暴战意 applyDmg() 扩展为链路式乘数 | 低 | 联机 MVP | base * shopMul * masteryMul * ultMul |
+| 暗影裂隙 pull 位置修改由服务器端执行 | 低 | 联机 MVP | 纯算术，体现在 EnemySnap.x/y 中 |
+| 奥术轰炸随机目标使用服务器端统一随机源 | 中 | 联机 MVP | 保证导弹轨迹跨客户端一致 |
+| gameStats.ultimate* 联机时各客户端独立追踪 | 信息 | - | 与成就/Secrets 处理方式一致 |
+| 箭雨风暴 4 人同时释放时带宽峰值控制 | 低 | 联机 Phase 2 | 可选投射物快照降频 |
+
+### 决策记录
+
+- Ultimate 系统引入 3 项新增序列化需求：(1) PlayerSnap Ultimate 充能/释放状态 4 字段 (2) UltimateMissileSnap 投射物子类型 (3) 暗影裂隙力场吸引（零新增字段，体现在 EnemySnap 位置变化中）。累积更新项从 25 增至 28
+- 充能必须由服务器端权威计算，不允许客户端自报充能值。理由：充能源（击杀/受伤）在半授权模型中由服务器端权威判定，允许客户端自报会带来作弊风险
+- 4 种 Ultimate 效果中，狂暴战意和暗影裂隙不引入新序列化字段（纯自身 buff / 力场效果体现在现有字段变化中），奥术轰炸和箭雨风暴需要 UltimateMissileSnap 投射物同步
+- UltimateMissileSnap 与 PetBulletSnap 和 BulletSnap 结构类似但更简单（无穿透/冰冻/点燃等额外效果），建议纳入 Drive #29 提出的 collectInternalBullets() 统一采集函数
+- 箭雨风暴是快照开销最大的 Ultimate 效果（4 人同时释放 ~5KB），但概率极低且持续时间短，仍在带宽预算弹性范围内
+- 狂暴战意的伤害倍数注入扩展了 applyDmg() 链路：`base * weaponDmgMul * (1 + masteryDmgBonus) * ultimateDmgMul`，全部是静态乘数，确定性无问题
+- 暗影裂隙的"吸引敌人"是新的位置修改机制，服务器端执行后体现在 EnemySnap.x/y 变化中，远程客户端无需额外信息即可正确渲染
+- 连续第 18 次阻塞确认。后端设计产出物已完备，等待前端排入 Player 拆分和序列化实现
 
 ---
 
