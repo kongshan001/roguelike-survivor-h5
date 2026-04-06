@@ -276,7 +276,7 @@ export const CFG = {
     quests_half:       { name:'挑战新星',    icon:'🌟',  desc:'完成一半Quest(7个)',    type:'condition', reward:50,
       check: s => (s.completedQuestsCount || 0) >= 7 },
     quests_all:        { name:'挑战大师',    icon:'👑',  desc:'完成全部Quest',        type:'condition', reward:150,
-      check: s => (s.completedQuestsCount || 0) >= 14 },
+      check: s => (s.completedQuestsCount || 0) >= CFG.QUESTS.length },
     // === Hidden ===
     speed_clear:       { name:'速度与激情',  icon:'🏎',  desc:'在3分钟内击败Boss',     type:'condition', reward:100,
       check: s => s.bossKilled && s.elapsed <= 180, hidden:true },
