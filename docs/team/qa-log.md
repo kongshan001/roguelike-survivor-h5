@@ -4,6 +4,127 @@
 
 ---
 
+## 2026-04-06 — Drive #23: 幸运硬币被动 + 6个新协同 QA审查
+
+### 测试结果：1/14 通过（13 FAILED — Critical 回归）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 1 PASS | 标题画面渲染 | 标题画面为静态HTML，不依赖JS |
+| 13 FAIL | 全部其余测试 | enemy.js 模块加载中断，游戏无法启动 |
+
+### 根因分析
+
+**BUG-011 (Critical)**：`src/entities/enemy.js` 第126行三元表达式语法错误，导致 ES Module 加载链中断。
+
+- **错误代码**：`if (isCrit) dmg *= 2 + (window.game ? window.game.player.critDmgBonus || 0);`
+- **正确应为**：`if (isCrit) dmg *= 2 + (window.game ? window.game.player.critDmgBonus || 0 : 0);`
+- **问题**：三元表达式缺少 `: 0`（假值分支），导致 `Unexpected token ')'`
+- **影响范围**：enemy.js 加载失败 -> game.js 无法 import -> window.startGame 为 undefined -> 点击"开始游戏"无反应
+- **文件状态**：该修改未提交到 git（working tree 中的未暂存变更）
+- **来源**：Drive #23 前端 Agent 为支持 `critDmgBonus`（幸运硬币被动）而修改 `hurt()` 方法
+
+### JS 语法检查（5个文件通过，但运行时失败）
+
+| 文件 | node --check | 浏览器 ES Module 加载 |
+|------|-------------|---------------------|
+| config.js | OK | OK |
+| game.js | OK | FAIL（依赖 enemy.js） |
+| registry.js | OK | OK |
+| upgrade-generate.js | OK | OK |
+| Player.js | OK | OK |
+| enemy.js | OK | **FAIL — SyntaxError** |
+
+**注意**：`node --check` 使用 CJS 解析器，不检测 ES Module 严格模式下的三元表达式问题。需使用 `node --input-type=module -e "$(cat file)"` 才能复现浏览器中的错误。
+
+### 代码审查 — Drive #23 变更范围
+
+本次 Drive 涉及代码变更（基于 git diff 7d8d2a7..3f16507）：
+
+- `src/core/config.js` — 新增 PASSIVES.luckycoin + 6个 SYNERGIES 条目
+- `src/entities/Player.js` — 新增 critDmgBonus/goldDropBonus 字段
+- `src/game.js` — 新增金币倍率/协同触发逻辑
+- `src/ui/upgrade-generate.js` — 新增 luckycoin 被动 apply 逻辑
+- `src/weapons/registry.js` — 新增 boomerang_magnet/boomerang_crit 协同
+- `src/entities/enemy.js`（**未提交**） — critDmgBonus 集成到 hurt() 方法
+
+#### PASSIVES.luckycoin 配置验证
+
+- **名称/图标/描述**：幸运硬币/🪙/暴击伤害+50%，金币+15% -- 确认
+- **maxStack:3** -- 确认
+- **critDmgBonus: 0.5**（每层+50%暴击伤害） -- 确认
+- **goldDropBonus: 0.15**（每层+15%金币掉落） -- 确认
+- 所有数值引用合理，与设计规格对齐
+
+#### 6个新 SYNERGIES 格式验证
+
+| ID | 名称 | 类型 | req 格式 | 确认 |
+|----|------|------|---------|------|
+| crit_luckycoin | 命运赌徒 | 被动+被动 | passives:['crit','luckycoin'] | OK |
+| holywater_luckycoin | 圣水炼金 | 武器+被动 | weapon:'holywater', passive:'luckycoin' | OK |
+| firestaff_luckycoin | 炼金烈焰 | 武器+被动 | weapon:'firestaff', passive:'luckycoin' | OK |
+| frostaura_luckycoin | 冰霜拾荒 | 武器+被动 | weapon:'frostaura', passive:'luckycoin' | OK |
+| boomerang_magnet | 磁力回旋 | 武器+被动 | weapon:'boomerang', passive:'magnet' | OK |
+| boomerang_crit | 致命回旋 | 武器+被动 | weapon:'boomerang', passive:'crit' | OK |
+
+- 所有6个协同的 req 格式正确（与现有12个协同格式一致）
+- weaponBonus 属性定义合理
+- Player.checkSynergies() 通用逻辑可正确匹配被动+被动和武器+被动两种模式
+
+#### Player.js 新增字段验证
+
+- **critDmgBonus: 0**（第49行） -- 确认
+- **goldDropBonus: 0**（第50行） -- 确认
+- 字段在构造函数中正确初始化
+
+#### upgrade-generate.js luckycoin apply 验证
+
+- **第43行**：`if (key === 'luckycoin') { player.critDmgBonus += CFG.PASSIVES.luckycoin.critDmgBonus; player.goldDropBonus += CFG.PASSIVES.luckycoin.goldDropBonus; }` -- 确认
+- 引用 CFG 常量而非硬编码 -- 正确
+
+#### game.js 协同集成验证
+
+- **第472-473行**：goldMul = 1 + goldDropBonus -- 金币倍率应用正确
+- **第475-478行**：crit_luckycoin 协同（暴击击杀金币翻倍） -- 确认
+- **第482-485行**：firestaff_luckycoin 协同（点燃敌人宝石+1） -- 确认
+- **第489-496行**：frostaura_luckycoin 协同（冰冻敌人宝石吸引+30px） -- 确认
+- **第505-511行**：holywater_luckycoin 协同（圣水击杀额外金币） -- 确认
+- **第622行**：frostaura_luckycoin 宝石吸引范围扩展 -- 确认
+- 所有6个新协同的 game.js 集成逻辑正确
+
+#### registry.js boomerang 协同验证
+
+- **第923-931行**：boomerang_crit 协同（回旋镖可暴击） -- 确认
+- **第933-945行**：boomerang_magnet 协同（飞行路径吸引宝石） -- 确认
+- 宝石吸引使用平方距离比较优化 -- 确认
+
+#### enemy.js critDmgBonus 集成（**有 BUG**）
+
+- **第126行**：`if (isCrit) dmg *= 2 + (window.game ? window.game.player.critDmgBonus || 0);`
+- **语法错误**：三元表达式缺少假值分支 `: 0`
+- **正确代码应为**：`if (isCrit) dmg *= 2 + (window.game ? window.game.player.critDmgBonus || 0 : 0);`
+- 该文件未提交到 git（working tree 变更）
+
+### 新增缺陷
+
+| ID | 严重度 | 模块 | 描述 | 状态 | 指派 |
+|----|--------|------|------|------|------|
+| BUG-011 | **Critical** | enemy.js | hurt() 方法三元表达式缺少假值分支导致 SyntaxError，游戏无法启动 | 待修复 | frontend |
+
+### 诊断方法论记录
+
+- `node --check` 使用 CommonJS 解析器，**无法检测** ES Module 严格模式下的三元表达式语法错误
+- 正确的诊断方法：`node --input-type=module -e "$(cat src/entities/enemy.js)"`
+- 或在 Playwright 测试中逐个动态 import 模块，精确识别加载失败的文件
+
+### 决策记录
+
+- 当前测试全部受阻于 BUG-011，无法验证幸运硬币和6个新协同的实际功能
+- BUG-011 修复后需重新执行完整 E2E 测试套件
+- 版本号保持不变（Critical bug 未修复，不应递增版本）
+
+---
+
 ## 2026-04-06 — Drive #22: findNearestEnemy 重构至 Weapon 基类 QA审查
 
 ### 测试结果：14/14 通过（全绿，耗时 4.5 分钟）
@@ -940,6 +1061,7 @@
 
 | ID | 严重度 | 模块 | 描述 | 状态 | 指派 |
 |----|--------|------|------|------|------|
+| **BUG-011** | **Critical** | enemy.js | hurt() 三元表达式语法错误，游戏无法启动 | **待修复** | **frontend** |
 | **BUG-009** | **Critical** | 模块加载 | `src/core/sprite-cache.js` 缺失，游戏无法启动 | **已修复** v1.2.0 | **frontend** |
 | BUG-005 | Low | 武器-圣水 | 圣水Lv1伤害极低 | ✅ 已修复 v0.3.1 | frontend |
 | BUG-006 | Low | 道具-磁铁 | 全图吸引后磁铁道具价值大降 | ✅ 已修复 v0.3.1 | designer |
