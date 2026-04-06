@@ -12,11 +12,281 @@
 | P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | ✅ 设计规格书完成 |
 | P1 | 网络协议详细规格书（消息定义/快照格式/断线重连） | ✅ Drive #11 完成 |
 | P1 | 联机前置任务清单（前端 1 页精简清单） | ✅ Drive #15 已输出 |
-| P1 | 序列化接口规格书（需更新：无尽模式字段 + critDmgBonus/goldDropBonus + 6新协同 + 毒雾_poison字段 + 3新协同） | ⚠️ Drive #25 确认：EnemySnap 需新增 poison 字段，PlayerSnap 需新增 poisonmist_armor/poisonmist_regen 状态，待前端实现 |
+| P1 | 序列化接口规格书（待积累更新：无尽模式 + critDmgBonus/goldDropBonus + 9新协同 + BoomerangSnap + 毒雾poison + 2新敌人） | ⚠️ Drive #26 评估：ShieldBearer/Exploder新增字段影响可控，待前端排入实现时一次性更新规格书 |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，待前端实现 |
 | P1 | 无尽模式联机适配方案（房间生命周期/状态同步限流/存档验证） | ⚠️ Drive #24 评估完成，关键风险已识别，待联机阶段实施 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | ⏳ 已评估，阻塞于 P1 前端实现 |
 | P2 | Docker 容器化部署方案 | 待评估（低优先级） |
+
+---
+
+## 2026-04-06 -- Drive #26: v2.1 新敌人(ShieldBearer/Exploder)对联机序列化的影响评估 + 规格书累积更新规划
+
+### 背景
+
+策划 Drive #26 完成了 v2.1 新敌人设计规格书，新增 2 种敌人：
+
+1. **护盾型 ShieldBearer**: 正面60度扇形减伤70%的坦克型敌人（18x18, 8HP, 25px/s）
+2. **自爆型 Exploder**: 接近/死亡时产生AOE爆炸的距离管理型敌人（14x14, 3HP, 65px/s）
+
+当前版本 v1.6.1，新敌人尚未实现（设计规格刚完成），属于 v2.1 规划。
+
+涉及文件变更（预计）：
+
+| 变更项 | 涉及文件 | 具体内容 |
+|--------|---------|---------|
+| CFG.ENEMY_TYPES 新增 2 种 | `src/core/config.js` | shieldbearer + exploder 配置参数 |
+| Enemy constructor 新增字段 | `src/entities/enemy.js` | shielded/shieldArc/shieldDmgMul + exploder 系列 + _fusing/_fuseTimer/_exploded |
+| Enemy update() 新增行为 | `src/entities/enemy.js` | exploder AI（接近蓄力+爆炸+连锁） |
+| Enemy hurt() 签名扩展 | `src/entities/enemy.js` | 新增 sourceX/sourceY 可选参数，盾牌方向减伤判定 |
+| Enemy hurt() 新增 exploder 死亡爆炸 | `src/entities/enemy.js` | HP<=0 且 type==='exploder' 时触发 _explode() |
+| Enemy 新增 _explode() 方法 | `src/entities/enemy.js` | AOE 范围判定 + 友军伤害 + 连锁爆炸 |
+| game.js 爆炸效果渲染 | `src/game.js` | _explosionEffects 数组 + 渲染循环 |
+| 武器 hurt() 调用点修改 | `src/weapons/registry.js` | 各武器传入 sourceX/sourceY |
+| spawner.js 生成池扩展 | `src/systems/spawner.js` | 180s+/270s+/endless 新增两种敌人 |
+
+### 一、ShieldBearer 对 EnemySnap 序列化的影响
+
+#### 1.1 新增字段分析
+
+护盾型引入以下 Enemy 构造函数字段：
+
+| 字段 | 类型 | 序列化需求 | 理由 |
+|------|------|-----------|------|
+| `shielded` | `boolean` | 需要序列化 | 决定 hurt() 中是否执行方向减伤判定 |
+| `shieldArc` | `number` | 不序列化 | 固定属性，由 CFG.ENEMY_TYPES.shieldbearer 决定 |
+| `shieldDmgMul` | `number` | 不序列化 | 固定属性，同上 |
+
+同时引入运行时动态字段：
+
+| 字段 | 类型 | 序列化需求 | 理由 |
+|------|------|-----------|------|
+| `_shieldBlocked` | `boolean` | 不序列化 | 纯视觉标记（盾牌被击中闪烁），单 tick 有效 |
+
+#### 1.2 EnemySnap 扩展
+
+```typescript
+interface EnemySnap {
+  // ... 现有字段 ...
+  shielded?: boolean;         // 可选字段，仅护盾型为 true
+  // shieldArc: 固定属性，从 CFG 获取，不序列化
+  // shieldDmgMul: 固定属性，同上
+  // _shieldBlocked: 纯视觉，不序列化
+}
+```
+
+**快照大小影响**：仅 1 个布尔值（~8B），仅护盾型有值。场景中同时存在 0-3 个护盾型，额外增加 0-24B，可忽略。
+
+#### 1.3 服务器端逻辑复现评估
+
+盾牌方向判定在 `hurt()` 中执行：
+
+```
+angleToAttacker = atan2(sourceY - enemy.y, sourceX - enemy.x)
+shieldFacing = atan2(player.y - enemy.y, player.x - enemy.x)
+angleDiff = normalize(angleToAttacker - shieldFacing)
+if |angleDiff| < shieldArc/2: dmg *= shieldDmgMul
+```
+
+**服务器端复现复杂度**：低。纯三角函数运算，无随机因素。但有一个关键前提：**hurt() 需要接收攻击来源坐标 (sourceX, sourceY)**。
+
+**联机一致性分析**：
+
+| 维度 | 分析 |
+|------|------|
+| 确定性 | 盾牌方向依赖 `player.x/y`（权威状态）和 `sourceX/sourceY`（子弹/投射物位置），均为服务器端已知状态，确定性无问题 |
+| hurt() 签名变更 | 需要在所有武器碰撞点传入 source 坐标，这是前端改动（非后端），但不影响序列化格式 |
+| 武器分类影响 | 闪电/冰冻光环等范围武器不传 source，盾牌减伤不生效 -- 这是设计意图，服务器端只需同样不传 source 即可 |
+
+**关键决策**：盾牌减伤计算在半授权模型中由服务器端驱动。理由：
+
+1. 伤害计算是权威逻辑，服务器端必须执行
+2. shieldDmgMul 存储在 CFG.ENEMY_TYPES 中，服务器 import 同一份 config.js 即可获得
+3. 角度判定是纯数学运算，无浮点不确定性风险（atan2 在所有 JS 引擎中行为一致）
+
+### 二、Exploder 对 EnemySnap 序列化的影响
+
+#### 2.1 新增字段分析
+
+自爆型引入以下 Enemy 构造函数字段：
+
+| 字段 | 类型 | 序列化需求 | 理由 |
+|------|------|-----------|------|
+| `exploder` | `boolean` | 需要序列化 | 标识敌人类型，影响死亡处理逻辑 |
+| `explodeTriggerDist` | `number` | 不序列化 | 固定属性，由 CFG 决定 |
+| `explodeRadius` | `number` | 不序列化 | 固定属性 |
+| `explodeDmg` | `number` | 不序列化 | 固定属性 |
+| `explodeChargeSpeed` | `number` | 不序列化 | 固定属性 |
+| `explodeFuseTime` | `number` | 不序列化 | 固定属性 |
+
+运行时动态字段：
+
+| 字段 | 类型 | 序列化需求 | 理由 |
+|------|------|-----------|------|
+| `_fusing` | `boolean` | **需要序列化** | 标识蓄力状态，影响行为（正常移动 vs 冲刺移动） |
+| `_fuseTimer` | `number` | **需要序列化** | 蓄力倒计时，决定何时爆炸 |
+| `_exploded` | `boolean` | 不序列化 | 死亡标记，爆炸后 hp=0 会被从 enemies[] 移除 |
+
+#### 2.2 EnemySnap 扩展
+
+```typescript
+interface EnemySnap {
+  // ... 现有字段 ...
+  exploder?: boolean;         // 可选字段，仅自爆型为 true
+  fusing?: boolean;           // 可选字段，仅自爆型且正在蓄力时为 true
+  fuseTimer?: number;         // 可选字段，蓄力倒计时（秒，1位小数）
+  // _exploded: 不序列化（死亡后从数组移除）
+  // explodeTriggerDist/explodeRadius/explodeDmg/explodeChargeSpeed/explodeFuseTime: 固定属性，不序列化
+}
+```
+
+**快照大小影响**：3 个字段约 30B/自爆型敌人。场景中同时存在 0-3 个自爆型，额外增加 0-90B，可忽略。
+
+#### 2.3 _fusing 和 _fuseTimer 的序列化必要性
+
+这两个字段**必须序列化**，理由：
+
+1. **行为差异**：`_fusing=true` 时移速从 65 提升到 100（`explodeChargeSpeed`），如果反序列化时丢失 `_fusing` 状态，客户端会以正常速度渲染蓄力中的自爆型，产生位置偏差
+2. **倒计时精度**：`_fuseTimer` 决定爆炸时机。丢失后从 `explodeFuseTime`(0.6s) 重新开始，可能导致双重爆炸或延迟爆炸
+3. **与 frozen/slow 的交互**：冰冻暂停蓄力计时器（设计规格 3.8），序列化时需要保留冻结状态下的 _fuseTimer 值
+
+#### 2.4 _explode() 方法的服务器端实现
+
+自爆型的 `_explode()` 是最复杂的新增逻辑：
+
+| 逻辑步骤 | 复杂度 | 说明 |
+|---------|--------|------|
+| 对玩家AOE伤害判定 | 低 | 距离判定 + takeDamage() |
+| 友军伤害遍历 | 中 | 遍历所有敌人，距离判定 + hp 减少 |
+| 连锁爆炸触发 | 中 | 递归调用 _explode()，需防无限递归 |
+| 爆炸视觉效果 | N/A | 纯客户端渲染，服务器端不处理 |
+
+**连锁爆炸的递归深度控制**：实际游戏中自爆型密集排列的概率极低，但服务器端仍需防无限递归。`_exploded` 标记提供天然保护（每个 exploder 只爆炸一次）。
+
+#### 2.5 爆炸事件在 EventSnap 中的表示
+
+爆炸是重要的游戏事件，联机时需要在 EventSnap 中体现：
+
+```typescript
+// EventSnap.type 扩展
+type EventSnap = {
+  type: "kill" | "damage" | "heal" | "pickup" | "levelup" |
+        "boss_spawn" | "boss_kill" | "explosion";  // 新增 "explosion"
+  targetId: string;
+  sourceId?: string;
+  value?: number;
+  x?: number;       // 爆炸位置 x
+  y?: number;       // 爆炸位置 y
+  radius?: number;  // 爆炸半径（用于客户端渲染爆炸效果）
+};
+```
+
+爆炸事件不包含在 `EnemySnap` 中（爆炸后敌人已死亡），而是作为独立事件。客户端收到 `explosion` 事件后渲染爆炸视觉效果。
+
+**快照大小影响**：每个爆炸事件约 80B。场景中每秒最多 1-2 次爆炸，额外增加 80-160B/tick，可忽略。
+
+### 三、hurt() 签名扩展对联机的影响
+
+设计规格要求 `hurt()` 方法扩展为 `hurt(dmg, isCrit, sourceX, sourceY)`。
+
+**对联机序列化的影响**：
+
+| 维度 | 影响 |
+|------|------|
+| EnemySnap 格式 | 无变化 -- hurt() 是方法签名变更，不引入新的序列化字段 |
+| BulletSnap 格式 | 无变化 -- 子弹的 x/y 已包含在快照中，服务器端执行 hurt() 时可使用子弹坐标作为 source |
+| 服务器端逻辑 | 服务器端运行碰撞检测时，自然拥有子弹/投射物坐标，可直接传入 sourceX/sourceY |
+| 武器调用链路 | 前端各武器的 hurt() 调用点需要传入 source 坐标，这是前端改动，不阻塞后端设计 |
+
+**关键结论**：hurt() 签名扩展是纯前端改动，后端服务器端在运行碰撞检测时自然拥有所有必要坐标数据。联机时 hurt() 调用全部由服务器端发起（半授权模型中碰撞检测在服务器端执行），source 坐标从子弹/投射物的快照数据中获取。
+
+### 四、快照大小更新汇总
+
+| 变更项 | 额外大小 | 说明 |
+|--------|---------|------|
+| EnemySnap.shielded（0-3个护盾型） | +0-24B | 1个布尔值/敌人 |
+| EnemySnap.exploder + fusing + fuseTimer（0-3个自爆型） | +0-90B | 3个字段/敌人 |
+| EventSnap.type="explosion"（1-2次/秒） | +80-160B/tick | 含 x/y/radius |
+| CFG.ENEMY_TYPES 新增 2 种类型名称 | +0B | type 字段为自由字符串 |
+| 武器 hurt() 签名变更 | +0B | 无新增序列化字段 |
+| **合计** | **+80-274B/tick** | 可忽略 |
+
+**总快照大小**：从 ~6.3-7.6KB（Drive #25 估算）增加到 ~6.4-7.9KB，仍在带宽预算内（60KB/s 下行）。
+
+### 五、序列化规格书累积更新规划
+
+Drive #19 产出的序列化接口规格书（v1.0, 基于 v1.4.0）已累积以下待更新项：
+
+| 来源 | 更新项 | 影响 | Drive |
+|------|--------|------|-------|
+| 无尽模式 | GameSnapshot 新增 endless/bossCycleIndex/bossKillCount | 3 个字段 | #24 |
+| 幸运硬币 | PlayerSnap 新增 critDmgBonus/goldDropBonus | 2 个字段 | #23 |
+| 9 新协同 | activeSynergies 扩展 15->21 种 | 数组长度增长 | #23+#25 |
+| Boomerang 系列 | BulletSnap 新增 BoomerangSnap 子类型 | 投射物采集逻辑 | #20+#21 |
+| TrailSnap | Blazerang 火焰轨迹同步（联机阶段） | 新增 snap 类型 | #21 |
+| 毒雾 | EnemySnap 新增 poison 可选字段 | 1 个结构体字段 | #25 |
+| **护盾型** | **EnemySnap 新增 shielded 可选字段** | **1 个布尔字段** | **#26** |
+| **自爆型** | **EnemySnap 新增 exploder/fusing/fuseTimer 可选字段** | **3 个字段** | **#26** |
+| **爆炸事件** | **EventSnap.type 新增 "explosion" + x/y/radius** | **事件类型扩展** | **#26** |
+
+**策略**：不在每次 Drive 中更新规格书（前端尚未排入实现，频繁更新增加维护成本）。等前端启动联机前置任务（Player 拆分 + 序列化实现）时，一次性将所有累积更新合并到规格书 v2.0。
+
+当前规格书 v1.0 覆盖 v1.4.0 代码库，累积更新需覆盖至 v2.1（假设前端完成所有新敌人/武器实现后启动联机）。
+
+### 六、服务器端 spawner 生成池扩展
+
+spawner 需要在 180s+/270s+/endless 阶段新增 `shieldbearer` 和 `exploder`：
+
+```typescript
+// spawner.js 180s+ 阶段 types 数组新增
+types: ['zombie', 'bat', 'skeleton', 'ghost', 'elite_skeleton', 'splitter',
+        'shieldbearer', 'exploder']  // 新增 2 种
+```
+
+**服务器端影响**：
+
+| 维度 | 分析 |
+|------|------|
+| 生成逻辑 | types 数组扩展，服务器端 import spawner.js 即可获得 |
+| 生成权重 | 由 CFG.ENEMY_TYPES 的权重配置决定，无额外逻辑 |
+| 敌人创建 | shieldbearer 和 exploder 的构造函数参数全部来自 CFG，服务器端 import config.js 即可 |
+| 敌人数量上限 | 仍是 CFG.MAX_ENEMIES(70) 或无尽模式动态上限(100)，不因新增敌人类型而改变 |
+
+### 七、阻塞状态复查（连续第 14 次）
+
+| 后端产出物 | 状态 | 前端依赖 |
+|-----------|------|---------|
+| 联机技术调研报告 | 完成 | 无 |
+| 联机架构设计规格书 | 完成 | 无 |
+| 网络协议详细规格书 | **需更新（无尽模式字段 + 毒雾字段 + 2新敌人字段 + 爆炸事件）** | 前端评审 |
+| 联机前置任务清单 | 完成 | 无（已交付前端参考） |
+| 序列化接口规格书 | **需更新（9项累积更新，含本次2项新敌人字段）** | 前端评审 + 实现 |
+| Player 拆分方案 | 设计完成 | 前端评审 + 实现 |
+| 服务器 MVP 原型 | 评估完成 | 依赖上述两项前端实现 |
+
+前端当前版本 v1.6.1，v2.1 规划包含：毒雾武器 + 2 新敌人 + 其他新内容。Player 拆分仍未排入前端迭代计划。
+
+### 八、建议汇总
+
+| 建议 | 优先级 | 阶段 | 说明 |
+|------|--------|------|------|
+| EnemySnap 新增 shielded 可选字段 | 低 | v2.1 序列化更新 | 1 个布尔值，仅护盾型有值 |
+| EnemySnap 新增 exploder/fusing/fuseTimer 可选字段 | 低 | v2.1 序列化更新 | 3 个字段，自爆型蓄力状态必须同步 |
+| EventSnap 新增 "explosion" 事件类型 | 低 | 联机 MVP | 含 x/y/radius，用于客户端渲染爆炸效果 |
+| _explode() 服务器端添加递归深度保护 | 中 | 联机 MVP | _exploded 标记提供天然保护，但建议额外加 maxDepth=10 参数 |
+| 序列化规格书一次性更新（v1.0 -> v2.0） | 中 | 前端启动联机前 | 合并 9 项累积更新，避免频繁维护 |
+| hurt() 签名扩展由前端先行实现 | 中 | v2.1 前端实现 | 不阻塞后端设计，联机时服务器端自然拥有 source 坐标 |
+
+### 决策记录
+
+- ShieldBearer 引入 `shielded` 布尔字段到 EnemySnap，盾牌方向减伤是纯三角函数运算，服务器端确定性复现无障碍
+- Exploder 引入 3 个序列化字段（exploder/fusing/fuseTimer），其中 fusing 和 fuseTimer 必须序列化（蓄力状态影响移动速度和爆炸时机）
+- hurt() 签名扩展为纯前端改动，对联机序列化格式无影响，服务器端执行碰撞检测时自然拥有 source 坐标
+- 爆炸事件（EventSnap 新增 "explosion" 类型）用于客户端渲染爆炸效果，不影响权威状态
+- 连锁爆炸的递归安全性由 _exploded 标记保证（每个 exploder 只爆炸一次），建议服务器端额外添加 maxDepth 参数作为防御性编程
+- 快照大小从 ~6.3-7.6KB 增加到 ~6.4-7.9KB，仍在带宽预算内
+- 序列化规格书采用"累积更新，一次性合并"策略，等前端启动联机前置任务时发布 v2.0
+- 连续第 14 次阻塞确认。后端设计产出物已完备，等待前端排入 Player 拆分和序列化实现
 
 ---
 

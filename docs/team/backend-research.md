@@ -988,3 +988,63 @@ function serverSpawn(gameState: ServerGameState, dt: number) {
 - 60分钟房间硬上限是资源管理的关键保障
 - 断线重连使用完整快照而非 checkpoint 差量，因为 15KB 在 30s 窗口内传输无压力
 - 存档验证延后至全球排行榜阶段
+
+---
+
+## 附录 C: v2.1 新敌人联机序列化适配分析 (Drive #26, 2026-04-06)
+
+### C.1 概述
+
+v2.1 新增 2 种敌人：护盾型(ShieldBearer)和自爆型(Exploder)。本节分析新敌人对联机序列化的影响。
+
+### C.2 新敌人序列化字段汇总
+
+| 敌人类型 | 新增序列化字段 | 固定属性(不序列化) | 纯视觉(不序列化) |
+|---------|-------------|-----------------|---------------|
+| ShieldBearer | `shielded: boolean` | shieldArc, shieldDmgMul | _shieldBlocked |
+| Exploder | `exploder: boolean`, `fusing: boolean`, `fuseTimer: number` | explodeTriggerDist, explodeRadius, explodeDmg, explodeChargeSpeed, explodeFuseTime | 蓄力脉动/颜色渐变 |
+
+### C.3 服务器端实现复杂度评估
+
+| 新逻辑 | 复杂度 | 说明 |
+|--------|--------|------|
+| 盾牌方向减伤判定 | 低 | atan2 角度比较 + dmg 乘法，纯算术 |
+| 自爆型蓄力状态机 | 低 | fusing/fuseTimer 条件判断 + moveToward 参数切换 |
+| _explode() AOE 判定 | 中 | 遍历所有实体做距离判定 + hp 修改 |
+| 连锁爆炸递归 | 中 | 递归调用 _explode()，_exploded 标记防无限递归 |
+| 友军伤害 | 低 | 范围内敌人 hp -= 1 |
+| 爆炸事件广播 | 低 | EventSnap 新增 "explosion" 类型 |
+
+### C.4 与现有序列化规格的差异
+
+当前 EnemySnap（规格书 v1.0, 基于 v1.4.0）不包含 shieldbearer/exploder 字段。v2.0 更新时需追加以下可选字段：
+
+```typescript
+interface EnemySnap {
+  // ... 现有字段 ...
+  shielded?: boolean;        // 护盾型标记
+  exploder?: boolean;        // 自爆型标记
+  fusing?: boolean;          // 蓄力状态（仅 exploder）
+  fuseTimer?: number;        // 蓄力倒计时（仅 exploder, 1位小数）
+}
+```
+
+额外快照增量：每个 shieldbearer +8B, 每个 exploder +30B。场景中 0-3 个新敌人，总计 +0-114B/tick，可忽略。
+
+### C.5 对技术选型的影响
+
+| 选型项 | 原决策 | 新敌人影响 | 结论 |
+|--------|--------|----------|------|
+| 同步模式 | 半授权状态同步 | 无变化 | 维持 |
+| 传输协议 | WebSocket (ws) | 无变化（增量可忽略） | 维持 |
+| 序列化 | JSON (MVP) | 无变化 | 维持 |
+| 服务器框架 | Node.js + ws | 无变化 | 维持 |
+| 部署 | Docker + Fly.io | 无变化 | 维持 |
+
+### C.6 决策记录
+
+- 新敌人类型不改变技术栈选型
+- Exploder 的 fusing/fuseTimer 必须序列化（蓄力状态影响移动行为和爆炸时机）
+- ShieldBearer 的 shielded 布尔值需序列化（影响 hurt() 伤害判定路径）
+- 连锁爆炸的递归安全性由 _exploded 标记保证
+- hurt() 签名扩展（新增 sourceX/sourceY）是前端改动，不改变序列化格式
