@@ -4,6 +4,94 @@
 
 ---
 
+## 2026-04-06 — Drive #26: 前端状态巡检验证 + BUG-010确认
+
+### 测试结果：14/14 通过（全绿，耗时 4.6 分钟）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 14 PASS | 全部测试通过 | 无代码变更，无回归 |
+
+### 变更范围
+
+本次 Drive 涉及文档变更，无 src/ 代码修改：
+
+- `docs/superpowers/specs/2026-04-06-new-enemies-design.md` -- 新增 v2.1 新敌人设计规格（护盾型+自爆型，618行）
+- `docs/team/designer-log.md` -- Drive #26 设计工作记录
+- `docs/team/frontend-log.md` -- Drive #26 巡检记录 + 优先级表乱码修复（line 35-51 损坏文本修复）
+
+### 验证项
+
+#### 1. frontend-log.md 乱码修复确认 -- 通过
+
+- Drive #26 前端 Agent 修复了 frontend-log.md 优先级表区域的乱码文本
+- 修复前（line 35-51）：包含损坏的不可读字符，表格格式错乱
+- 修复后（line 35-47）：优先级表格式正确，所有条目清晰可读，排列有序
+- 确认无其他文件受乱码影响（qa-log.md / designer-log.md / backend-log.md 均正常）
+
+#### 2. BUG-010 状态确认 -- 已修复
+
+- **原始问题**：`all_evolutions` 成就 parts 仅含6种进化武器，缺少 evo_thunderang 和 evo_blazerang
+- **当前状态**：config.js 第261-262行确认：
+  - `desc:'完成全部8种武器进化'` -- 描述已更新
+  - `parts: ['evo_thunderholywater','evo_fireknife','evo_holydomain','evo_blizzard','evo_frostknife','evo_flamebible','evo_thunderang','evo_blazerang']` -- 包含全部8种
+  - 8个 hidden 子成就（evo_thunderholywater ~ evo_blazerang）全部定义完整
+- **修复时间线**：该 BUG 实际在 Drive #21 (Thunderang/Blazerang 实现) 的 commit 中已一并修复，Drive #22 QA 审查时仅报告了问题但未发现代码已更新。前端 Drive #26 确认代码已是正确状态。
+- **结论**：BUG-010 关闭
+
+#### 3. 无代码变更确认 -- 通过
+
+- `git diff 167a9ab..0405a71 -- src/` 返回 0 行变更，确认 src/ 目录无任何修改
+- `git diff 167a9ab..0405a71 -- index.html` 返回 0 行变更
+- 仅变更文件：3个 docs/ 下的文档文件
+- E2E 测试 14/14 全绿，与 Drive #25 结果一致
+
+#### 4. JS 语法检查（5个核心文件通过）
+
+| 文件 | node --check |
+|------|-------------|
+| config.js | OK |
+| game.js | OK |
+| registry.js | OK |
+| enemy.js | OK |
+| main.js | OK |
+
+### 缺陷状态更新
+
+| ID | 状态变更 | 说明 |
+|----|---------|------|
+| BUG-010 | 待处理 -> 已修复 | all_evolutions 成就 parts 已含8种，描述已更新，实际在 Drive #21 中已修复 |
+
+### 当前缺陷汇总（全部已关闭）
+
+| ID | 严重度 | 状态 | 说明 |
+|----|--------|------|------|
+| BUG-001 | Critical | 已修复 v0.2.0 | 平均存活1:03 |
+| BUG-002 | Critical | 已修复 v0.2.0 | 经验宝石无法收集 |
+| BUG-003 | Medium | 已修复 v0.20.0 | Retina屏精灵偏移 |
+| BUG-004 | Low | 已修复 v0.2.0 | 地面draw call过多 |
+| BUG-005 | Low | 已修复 v0.3.1 | 圣水Lv1伤害极低 |
+| BUG-006 | Low | 已修复 v0.3.1 | 磁铁道具价值问题 |
+| BUG-007 | Low | 已修复 v0.6.0 | 金币用途不明确 |
+| BUG-008 | Critical | 已修复 v1.0.0 | food.js const重新赋值 |
+| BUG-009 | Critical | 已修复 v1.2.0 | sprite-cache.js缺失 |
+| BUG-010 | Low | 已修复 Drive #21 | all_evolutions成就遗漏 |
+| BUG-011 | Critical | 已修复 Drive #25 | enemy.js三元表达式语法错误 |
+| BUG-012 | Medium | 已修复 Drive #25 | spawn内循环硬编码MAX_ENEMIES |
+| BUG-013 | Medium | 已修复 Drive #25 | updateEndlessUnlock无调用点 |
+| ENH-001 | Medium | 已修复 v0.3.1 | 圣经视觉区分度 |
+| ENH-002 | Low | 已修复 v0.3.1 | 蝙蝠精灵太小 |
+
+### 决策记录
+
+- 14/14 全绿，连续6个Drive零回归（Drive #20~#26）
+- BUG-010 确认已在 Drive #21 中修复，qa-log.md 状态滞后，本次更新关闭
+- BUG-001~013 + ENH-001/002 全部已关闭，当前无待处理缺陷
+- 版本号从 v1.6.1 递增至 v1.6.2（BUG状态清理+文档乱码修复）
+- 无新缺陷引入
+
+---
+
 ## 2026-04-06 — Drive #25: BUG-011/012/013 修复验证 + 回归测试
 
 ### 测试结果：14/14 通过（全绿，耗时 4.5 分钟）
@@ -1251,18 +1339,29 @@
 
 ## 当前待处理缺陷
 
-| ID | 严重度 | 模块 | 描述 | 状态 | 指派 |
-|----|--------|------|------|------|------|
-| BUG-010 | Low | 成就-进化大师 | `all_evolutions` 成就 parts 已含8种，描述文字未更新 | 待处理 | designer/frontend |
-| BUG-013 | Medium | game.js 解锁 | `updateEndlessUnlock()` 无调用点 + `d.bossKilled` 引用不存在字段 | 已修复 Drive #25 | frontend |
-| BUG-012 | Medium | game.js 生成 | 无尽模式内层生成循环使用固定 `CFG.MAX_ENEMIES`(70) | 已修复 Drive #25 | frontend |
-| BUG-011 | Critical | enemy.js | hurt() 三元表达式语法错误，游戏无法启动 | 已修复 Drive #25 | frontend |
-| BUG-009 | Critical | 模块加载 | `src/core/sprite-cache.js` 缺失，游戏无法启动 | 已修复 v1.2.0 | frontend |
-| BUG-005 | Low | 武器-圣水 | 圣水Lv1伤害极低 | 已修复 v0.3.1 | frontend |
-| BUG-006 | Low | 道具-磁铁 | 全图吸引后磁铁道具价值大降 | 已修复 v0.3.1 | designer |
-| BUG-007 | Low | UI-结算 | 结算画面金币用途不明确 | 已修复 v0.6.0 | designer/frontend |
-| ENH-001 | Medium | 视觉-圣经 | 圣经与圣水视觉区分度不够 | 已修复 v0.3.1 | art |
-| ENH-002 | Low | 视觉-蝙蝠 | 蝙蝠精灵10×10太小，移动端难以辨认 | 已修复 v0.3.1 | art |
+（无 -- 全部缺陷已关闭，BUG-001~013 + ENH-001/002 均已修复）
+
+---
+
+## 已关闭缺陷历史
+
+| ID | 严重度 | 模块 | 描述 | 状态 | 关闭版本 |
+|----|--------|------|------|------|---------|
+| BUG-013 | Medium | game.js 解锁 | `updateEndlessUnlock()` 无调用点 + `d.bossKilled` 引用不存在字段 | 已修复 | Drive #25 |
+| BUG-012 | Medium | game.js 生成 | 无尽模式内层生成循环使用固定 `CFG.MAX_ENEMIES`(70) | 已修复 | Drive #25 |
+| BUG-011 | Critical | enemy.js | hurt() 三元表达式语法错误，游戏无法启动 | 已修复 | Drive #25 |
+| BUG-010 | Low | 成就-进化大师 | `all_evolutions` 成就 parts 缺少 evo_thunderang/evo_blazerang | 已修复 | Drive #21 |
+| BUG-009 | Critical | 模块加载 | `src/core/sprite-cache.js` 缺失，游戏无法启动 | 已修复 | v1.2.0 |
+| BUG-008 | Critical | food.js | const d 重新赋值 TypeError 导致游戏卡死 | 已修复 | v1.0.0 |
+| BUG-007 | Low | UI-结算 | 结算画面金币用途不明确 | 已修复 | v0.6.0 |
+| BUG-006 | Low | 道具-磁铁 | 全图吸引后磁铁道具价值大降 | 已修复 | v0.3.1 |
+| BUG-005 | Low | 武器-圣水 | 圣水Lv1伤害极低 | 已修复 | v0.3.1 |
+| BUG-004 | Low | 渲染性能 | 地面逐格绘制draw call过多 | 已修复 | v0.2.0 |
+| BUG-003 | Medium | DPR渲染 | Retina屏精灵位置偏移 | 已修复 | v0.20.0 |
+| BUG-002 | Critical | 宝石收集 | 经验宝石留在原地无法收集 | 已修复 | v0.2.0 |
+| BUG-001 | Critical | 生存平衡 | 平均存活1:03，HP+无敌帧不够 | 已修复 | v0.2.0 |
+| ENH-001 | Medium | 视觉-圣经 | 圣经与圣水视觉区分度不够 | 已修复 | v0.3.1 |
+| ENH-002 | Low | 视觉-蝙蝠 | 蝙蝠精灵10x10太小，移动端难以辨认 | 已修复 | v0.3.1 |
 
 ---
 

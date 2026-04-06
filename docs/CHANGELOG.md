@@ -2,6 +2,16 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [1.6.2] - 2026-04-06
+
+### QA
+- Drive #26 测试 14/14 通过（全绿，4.6分钟）
+- BUG-010 确认已修复（all_evolutions 成就 parts 含8种，描述已更新）
+- frontend-log.md 乱码修复验证通过
+- 5个核心文件 JS 语法检查全部通过
+- 连续6个Drive零回归（Drive #20~#26）
+- 全部缺陷已关闭（BUG-001~013 + ENH-001/002）
+
 ## [1.6.1] - 2026-04-06
 
 ### Frontend
