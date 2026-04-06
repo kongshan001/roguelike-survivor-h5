@@ -72,7 +72,81 @@
 
 ---
 
-## 2026-04-06 -- Drive #28: 前端代码维护 — quests_all硬编码修复
+## 2026-04-07 -- Drive #30: 前端状态巡检 + Ultimate系统可实现性评估
+
+### 成果
+
+#### 1. 状态巡检
+
+- **QA P0/P1 Bug扫描**: qa-log.md当前无P0/P1 bug，所有缺陷（BUG-001~013 + ENH-001/002）均已关闭
+- **连续10个Drive零回归**: Drive #20~#29 均为 14/14 全绿
+- **当前版本**: v1.6.5
+
+#### 2. 代码质量检查
+
+- **JS语法检查**: 24个源文件全部通过 `node --check`（config/math/save/Player/enemy/gem/food/chest/registry/camera/spawner/damage-text/sfx/input/scenes/hud/upgrade-panel/upgrade-generate/quest-panel/shop-panel/skill-panel/achievement-panel/game/main）
+- **E2E测试**: 14/14 全部通过（耗时4.5分钟），零回归
+
+#### 3. Ultimate系统前端可实现性评估
+
+阅读 `docs/superpowers/specs/2026-04-06-ultimate-system-design.md`（448行），逐项评估8个修改点的前端可实现性：
+
+| # | 文件 | 修改内容 | 可行性 | 风险 |
+|---|------|---------|--------|------|
+| 1 | config.js | CFG.ULTIMATE 常量 + 2个成就 + 1个Quest | 低风险 | 纯数据配置，结构清晰 |
+| 2 | game.js | 充能追踪 + 击杀/受伤充能 + 释放逻辑 + 状态管理 | 中风险 | 需在敌人和玩家死亡处理链中注入充能逻辑 |
+| 3 | Player.js | _ultimateCharge/_ultimateActive/_ultimateType + 释放方法 | 低风险 | 沿用_dashCD/_dashing模式 |
+| 4 | registry.js | 武器update()检查_ultimateActive应用dmgMul/attackSpeedMul | 中风险 | 需在10+种武器的update中注入检查 |
+| 5 | scenes.js | Ultimate释放效果渲染（导弹/光环/箭矢/漩涡） | 高风险 | 4种完全不同的视觉效果，是最大工作量 |
+| 6 | input.js | Q键监听 + 移动端ULT按钮touchstart | 低风险 | 已有setDashCallback/setPauseCallback回调模式可复用 |
+| 7 | hud.js | 充能条UI（圆形充能指示器）+ 全屏闪光 | 低风险 | 已有DASH冷却条和screenFlash机制可复用 |
+| 8 | sfx.js | Ultimate释放音效（上行大和弦+爆发） | 低风险 | 已有11种音效的合成模式可复用 |
+
+**总体评估**: 可行，预估~250行（与设计规格~225行吻合）。主要工作量在scenes.js的4种视觉渲染效果。
+
+##### 技术风险识别
+
+1. **奥术轰炸(Arcane Barrage) -- 新投射物系统**: 导弹"从画面顶部飞向目标"需要新的投射物类型（不同于现有子弹和回旋镖），需要独立的missiles数组和每帧更新逻辑。建议在game.js中新增`game.ultimateMissiles[]`数组管理。
+
+2. **暗影裂隙(Shadow Rift) -- 吸引机制**: "范围内敌人被拉向中心"需要新的力场效果，与现有moveToward/moveAway方向相反。需要在enemy update中注入pull向量的计算。
+
+3. **狂暴战意(Berserker Rage) -- 全局乘数注入**: dmgMul=2.0和attackSpeedMul=1.5需要在所有武器的update()中检查player._ultimateActive状态。现有weaponDmgMul已建立基类applyDmg()模式，可复用。
+
+4. **箭雨风暴(Arrow Storm) -- 环形扩散投射物**: 类似Blizzard的冰晶弹幕但为360度环形，可复用Blizzard.shards的扩散逻辑。
+
+5. **充能追踪与击杀事件耦合**: 击杀充能需要在game.js的敌人死亡处理链中注入；受伤充能需要在Player.takeDamage()中注入。现有连击系统(_combo++)已在击杀链中工作，可沿相同路径注入。
+
+6. **暗影法师角色条件**: 暗影法师是Secrets系统隐藏角色，其Ultimate仅在解锁后可用。需要检查Player.charId是否为'shadow'，并处理角色不存在时的fallback。
+
+##### 与现有系统的协同评估
+
+| 系统 | 协同方式 | 复杂度 |
+|------|---------|--------|
+| weaponDmgMul(商店) | applyDmg()已统一乘数，Ultimate伤害直接调用applyDmg()即可 | 低 |
+| 连击系统 | Ultimate击杀计入_combo++，沿现有击杀链 | 低 |
+| screenShake | 释放时调用screenShake('boss')，复用现有等级 | 低 |
+| 协同系统 | 狂暴战意x2伤害与协同暴击乘法叠加，无需特殊处理 | 低 |
+| 难度系统 | 充能速率不受难度影响，伤害受weaponDmgMul间接影响 | 低 |
+| Secrets系统 | 暗影法师需all_evolutions成就解锁，需检查Save | 低 |
+
+#### 4. 技术债务更新
+
+新增 Ultimate 系统实现相关技术债务（待实现时跟踪）：
+
+- Ultimate系统实现（8个修改点，~250行预估）-- P1（下一个功能迭代）
+- 4种Ultimate视觉效果渲染（最大工作量）-- P1
+- 新投射物系统（ultimateMissiles[] 数组）-- P1
+
+维持不变的技术债务：
+- 网格空间哈希碰撞检测（敌人>80时启用）-- P1
+- 固定时间步游戏循环（Timestep Fixing）-- P1
+- 成就面板未做分类过滤/排序
+- 缺少成就完成时弹窗通知
+- 商店面板效果描述未显示下一级预览
+
+---
+
+## 2026-04-06 -- Drive #28: 前端代码维护 -- quests_all硬编码修复
 
 ### 成果
 - **quests_all成就阈值修复**: `config.js` 第279行 `>= 14` 硬编码改为 `>= CFG.QUESTS.length`
