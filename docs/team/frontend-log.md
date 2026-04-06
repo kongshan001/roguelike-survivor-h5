@@ -4,6 +4,64 @@
 
 ---
 
+## 2026-04-07 -- Drive #31: 前端状态巡检 + 技术债务审查
+
+### 1. 状态检查
+
+- **QA P0/P1 Bug扫描**: qa-log.md 当前无P0/P1 bug，所有缺陷（BUG-001~013 + ENH-001/002）均已关闭
+- **连续11个Drive零回归**: Drive #20~#30 均为 14/14 全绿
+- **当前版本**: v1.6.5
+
+### 2. 代码质量检查
+
+- **JS语法检查**: 24个源文件全部通过 `node --check`（sfx/config/math/save/Player/chest/enemy/food/gem/game/main/camera/damage-text/spawner/achievement-panel/hud/input/quest-panel/scenes/shop-panel/skill-panel/upgrade-generate/upgrade-panel/registry）
+- **E2E测试**: 14/14 全部通过（耗时6.2分钟，2个flaky retry后通过 -- 经验宝石收集与升级 + 5分钟Lv3，均为历史已知时序flaky）
+
+### 3. 技术债务审查
+
+- **frontend-research.md 可落地项审查**: P0优化全部已落地（distSq消除sqrt/AABB先行判断/sprite-cache离屏缓存），剩余P1项规模较大需专门迭代：
+  - 网格空间哈希碰撞检测 -- 需新增 GridHash 类 + 改造 game.js 碰撞循环，预估~80行
+  - 固定时间步游戏循环 -- 需重构主循环为 accumulate+fixed-step 模式，影响面广
+  - 粒子系统 SoA 重构 -- 当前无独立粒子系统，优先级低
+  - 转向行为（Steering） -- 敌人 AI 增强，非性能瓶颈
+- **当前P1技术债务评估**:
+  - 网格空间哈希: 当 MAX_ENEMIES=70~100 时暴力 O(n*m) 碰撞检测仍可接受，无紧迫性能瓶颈。建议在敌人上限提升至150+时再实施。
+  - 固定时间步: 当前 dt 上限50ms 已足够防止跳帧。仅在需要帧同步（联机）或精确物理模拟时才有必要。记录为"联机前置条件"。
+- **结论**: 本次 Drive 不启动代码改动，两项 P1 技术债务均无紧迫性。
+
+### 4. 无尽模式设计规格可实现性检查
+
+阅读 `docs/superpowers/specs/2026-04-05-endless-mode-design.md`（490行），对照当前 `src/game.js` 代码：
+
+- **结论: 无尽模式已完全实现**，设计规格中的12个实现要点（第12节）全部已在代码中落地：
+  - config.js: CFG.ENDLESS + 4个无尽Quest -- 已存在
+  - save.js: endlessUnlocked/bestEndlessTime/bestEndlessKills/bestEndlessBossKills + 迁移 -- 已存在
+  - game.js: endless 标志 + 时间检查跳过 + Boss周期生成 + 动态maxEnemies + Boss击杀奖励 + 无尽结算 -- 全部已实现
+  - spawner.js: getSpawnRate(elapsed, endless) 无尽分支 -- 已实现
+  - index.html: 无尽难度卡片 + 解锁逻辑 -- 已存在
+- **设计规格中的代码引用已过时**: 规格中的"修改前"代码片段反映的是 v1.2.2 之前的状态，当前代码已是"修改后"的状态。该规格文档应标记为"已实现"而非"待前端实现"。
+
+### 5. 可执行的小型改进评估
+
+- 当前代码库健康，无适合在巡检 Drive 中启动的小型代码改进
+- 无新功能需求等待实现（Ultimate 系统设计规格已完成但尚未安排实现 Drive）
+- 商店面板效果描述未显示下一级预览 -- 低优先级 UI 改进，可在后续 UI 改进 Drive 中处理
+
+### 技术债务（维持不变）
+
+- 网格空间哈希碰撞检测（敌人>80时启用）-- P1（无紧迫性，MAX_ENEMIES 70~100 时暴力检测仍可接受）
+- 固定时间步游戏循环（Timestep Fixing）-- P1（联机前置条件，单机模式无紧迫需求）
+- 成就面板未做分类过滤/排序
+- 缺少成就完成时弹窗通知
+- 商店面板效果描述未显示下一级预览
+- Ultimate 系统实现（8个修改点，~250行预估）-- P1（待安排功能迭代 Drive）
+
+### 变更文件
+
+无代码变更。仅更新 `docs/team/frontend-log.md`。
+
+---
+
 ## 2026-04-06 -- Drive #29: quests_half 硬编码修复
 
 ### 成果
