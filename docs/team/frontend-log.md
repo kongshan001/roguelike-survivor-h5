@@ -49,6 +49,25 @@
 
 ---
 
+## 2026-04-06 -- Drive #25: 前端代码审查 + BUG验证
+
+### 成果
+- **BUG-011/012/013 验证**: QA在Drive #24报告的3个无尽模式BUG全部已在Drive #24的fix commit中修复
+  - BUG-011 (无尽解锁触发): endGame(won)标准模式胜利时写入endlessUnlocked，pickChar时调用updateEndlessUnlock()
+  - BUG-012 (spawn内循环硬编码MAX_ENEMIES): 内循环已使用动态maxEnemies变量
+  - BUG-013 (updateEndlessUnlock从不调用): pickChar中已添加调用
+- **代码审查**: 无新P0 bug发现，所有无尽模式代码逻辑正确
+- **无新代码变更**: 当前无需要前端实现的可落地优化项
+
+### 技术债务（维持不变）
+- 网格空间哈希碰撞检测（敌人>80时启用）
+- 固定时间步游戏循环（Timestep Fixing）
+- 成就面板未做分类过滤/排序
+- 缺少成就完成时弹窗通知
+- 商店面板效果描述未显示下一级预览
+
+---
+
 ## 2026-04-06 -- Drive #22: 回旋镖系列代码重构 + 綈灭P0 bug评估
 
 ### 成果
