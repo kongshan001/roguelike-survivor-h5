@@ -8,7 +8,6 @@
 
 | 优先级 | 事项 | 状态 |
 |--------|------|------|
-| P1 | ~~第7种被动道具：幸运硬币 + 6个Synergy~~ | **✅ 已完成 Drive #23** |
 | P1 | 无尽模式游戏逻辑（21个实现点，CFG+Quest已就位） | **设计规格完善** 待前端实现 |
 | P2 | ~~v2.1新基础武器：毒雾PoisonMist（DOT叠层区域型，第8种基础武器）~~ | **✅ 设计规格完成 Drive #25** 待前端实现 |
 | P2 | ~~v2.1新敌人x2：护盾型(ShieldBearer) + 自爆型(Exploder)~~ | **✅ 设计规格完成 Drive #26** 待前端实现 |
@@ -16,7 +15,114 @@
 | P2 | ~~v2.2新Boss x2（暗影骑士 + 炎魔，含在多关卡设计中）~~ | **✅ 设计规格完成 Drive #27** 待前端实现 |
 | P2 | ~~v2.3 Secrets/隐藏要素系统（6个Secret: 隐藏角色/武器皮肤/称号/徽章）~~ | **✅ 设计规格完成 Drive #28** 待前端实现 |
 | P3 | ~~v2.3 Weapon Mastery精通系统（8武器x3阶精通，Bronze/Silver/Gold）~~ | **✅ 设计规格完成 Drive #29** 待前端实现 |
-| P3 | v2.4 Pet/伙伴系统（跟随AI+专属技能） | 提案完成 Drive #23 待详细设计 |
+| P3 | ~~v2.4 Pet/伙伴系统（3种Pet x 3级，跟随AI+专属攻击）~~ | **✅ 设计规格完成 Drive #29** 待前端实现 |
+
+**设计储备状态**：所有 P0/P1/P2/P3 设计规格均已完成。当前唯一待前端实现的设计储备：无尽模式(P1)、毒雾(P2)、新敌人x2(P2)、多关卡系统(P2)、Secrets(P2)、Weapon Mastery(P3)、Pet系统(P3)。如需新设计方向，需从竞品调研 P3 长期规划中选取（主动技能系统/Deck-building元素/装备词缀等）。
+
+---
+
+## 2026-04-06 -- Drive #29: v2.4 Pet/伙伴系统设计规格 + Weapon Mastery完成确认
+
+### 状态总览
+
+- 所有 P0/P1/P2 设计规格已完成，前端实现排期中
+- Drive #29 前次工作完成了 Weapon Mastery 设计规格，本次补完 Pet/伙伴系统详细设计
+- **至此，designer-log.md 优先级表中所有事项的设计规格均已完成**
+- 竞品调研报告已涵盖 8 款核心竞品 + 2 款补充竞品，内容全面无需更新
+
+### 成果
+
+- 完成 Pet/伙伴系统完整设计规格: `docs/superpowers/specs/2026-04-06-pet-companion-system-design.md`
+- 3种初始 Pet: 火焰精灵(投射)、冰霜守护(控场)、闪电猎鹰(高伤单体)
+- 每种 Pet 3级升级路线，通过标准升级池获取（权重 2/3）
+- 最多同时携带 1 只 Pet，Pet 不可被攻击（简化 AI）
+- 新增 2 个成就 + 1 个 Quest
+- Pet 伤害受 weaponDmgMul 影响，与武器一致
+- 12 个实现修改点，预估 ~269 行
+
+### CFG 数值表汇总
+
+```js
+// ===== CFG.PETS 新增 =====
+PETS: {
+  _global: {
+    maxPets: 1, followSmooth: 0.1, minFollowDist: 10,
+    pickupLevel: 3, getWeight: 2, upgradeWeight: 3,
+  },
+  flamesprite: {
+    name: '火焰精灵', icon: '🔥', desc: '投射火球',
+    size: 8, color: '#ff6d00', followAngle: -0.5, followDist: 40,
+    levels: {
+      1: { cd:1.5, dmg:2, range:200, pierce:1, speed:200, burnDur:0, burnDps:0 },
+      2: { cd:1.0, dmg:3, range:200, pierce:1, speed:220, burnDur:1.5, burnDps:2 },
+      3: { cd:0.6, dmg:5, range:220, pierce:2, speed:250, burnDur:1.5, burnDps:2 },
+    },
+    projectile: { w:6, h:6, color:'#ff9100', trail:true, trailColor:'#ff6d00' }
+  },
+  frostguard: {
+    name: '冰霜守护', icon: '❄️', desc: '锥形减速',
+    size: 8, color: '#4fc3f7', followAngle: 2.5, followDist: 60,
+    levels: {
+      1: { cd:2.0, range:80, slow:0.30, dmg:1, freezeChance:0, freezeDur:0 },
+      2: { cd:1.5, range:100, slow:0.45, dmg:1.5, freezeChance:0, freezeDur:0 },
+      3: { cd:1.0, range:130, slow:0.60, dmg:2, freezeChance:0.05, freezeDur:1.5 },
+    },
+    cone: { angle: 0.8, particles: 8 }
+  },
+  lightninghawk: {
+    name: '闪电猎鹰', icon: '⚡', desc: '俯冲攻击',
+    size: 6, color: '#ffd54f', followAngle: -1.57, followDist: 80,
+    levels: {
+      1: { cd:2.5, dmg:4, range:300, diveSpeed:350, returnSpeed:300 },
+      2: { cd:1.8, dmg:6, range:300, diveSpeed:380, returnSpeed:320 },
+      3: { cd:1.2, dmg:10, range:350, diveSpeed:400, returnSpeed:350,
+           lightning:{ chance:0.3, targets:2, dmg:6, chains:2, decay:0.5, range:100 } },
+    },
+    orbit: { speed: 1.5, radius: 50 }
+  },
+}
+
+// ===== CFG.ACHIEVEMENTS 新增 =====
+pet_first: { name:'忠实的伙伴', icon:'🐾', desc:'首次获得一只Pet', type:'flag', reward:30 },
+pet_max:   { name:'完美搭档',   icon:'⭐', desc:'将一只Pet升至满级', type:'flag', reward:50 },
+
+// ===== CFG.QUESTS 新增 =====
+{ id:'pet_kill_30', name:'宠物猎人', icon:'🐾', desc:'Pet击杀30个敌人', check:s=>s.petKills>=30, reward:80 },
+```
+
+### Pet DPS 平衡分析
+
+| Pet | Lv1 DPS | Lv3 DPS | 定位 |
+|-----|---------|---------|------|
+| 火焰精灵 | ~1.3 | ~10.3 (含点燃) | 投射输出 |
+| 冰霜守护 | ~0.5 | ~2.0 | 控场辅助 |
+| 闪电猎鹰 | ~1.6 | ~8.3 | 高伤单体 |
+
+对比: 基础武器 Lv3 DPS 范围 2-20。Pet Lv3 在武器 Lv2-3 之间，符合"锦上添花"定位。
+
+### 设计决策记录
+
+- 最多 1 只 Pet：5分钟短局+Canvas 2D性能限制，多只 Pet 分散升级选择且增加渲染开销
+- Pet 不可被攻击：简化 AI 逻辑，避免 HP 管理/复活机制等额外系统。Pet 是"额外能力"而非"需要保护的脆弱单位"
+- Pet 使用标准升级池（非独立面板）：避免新 UI 系统和升级节奏打断。Pet 作为升级选项之一增加决策深度。权重系统(getWeight:2, upgradeWeight:3)控制出现频率
+- Lv3 后才出现 Pet 选项：让玩家先确立武器方向再考虑 Pet，避免 Lv1 就面临 Pet vs 武器的困惑
+- 3 种 Pet 覆盖投射/控场/高伤三角：与武器设计哲学一致，玩家可根据已有 Build 选择互补 Pet
+- Pet 伤害受 weaponDmgMul 影响：与武器伤害缩放保持一致，商店"武器精通"升级也提升 Pet
+- Pet 暂不参与 Synergy 协同：v2.4 首版简化，先验证基础体验再增加复杂度。未来协同方向已在规格书第 12 节定义
+- 闪电猎鹰用环绕飞行+俯冲+折返：独特的三阶段攻击模式创造视觉辨识度，与回旋镖的追踪弧线区分
+- **设计储备全清空**：这是 designer-log.md 优先级表中最后一个待设计的项目。所有 P0-P3 事项均有完整设计规格
+
+### 下一步方向建议
+
+设计储备已全部清空。以下为未来可选方向（需与前端排期协调）：
+
+| 方向 | 来源 | 理由 | 优先级建议 |
+|------|------|------|-----------|
+| 主动技能系统 | Soulstone Survivors | 手动释放大招，增加操控深度 | P3 |
+| Pet+武器协同 x3 | 本设计规格 v2.5 | 3个Pet专属协同，扩展Build深度 | P3 |
+| 进化Pet | 本设计规格 v2.6 | Pet满级+被动满叠->进化Pet | P3 |
+| 装备词缀系统 | Halls of Torment | RPG式随机装备掉落 | P4 |
+| 更多Pet x2-3 | Spirit Hunters | 扩展Pet选择深度 | P4 |
 
 ---
 
