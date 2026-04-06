@@ -107,6 +107,9 @@ export const CFG = {
     normal: {name:'标准',icon:'⚔️',desc:'标准难度，平衡体验',color:'#ffd54f',
              playerHpMul:1.0,playerSpeedMul:1.0,enemyHpMul:1.0,enemySpeedMul:1.0,enemyDmgMul:1.0,
              spawnIntervalMul:1.0,spawnCountMod:0,bossHpMul:1.0,bossSpeedMul:1.0,expMul:1.0,foodDropMul:1.0},
+    endless:{name:'无尽',icon:'♾',desc:'击败Boss后解锁，永无止境',color:'#ce93d8',
+             playerHpMul:1.0,playerSpeedMul:1.0,enemyHpMul:1.0,enemySpeedMul:1.0,enemyDmgMul:1.0,
+             spawnIntervalMul:1.0,spawnCountMod:0,bossHpMul:1.0,bossSpeedMul:1.0,expMul:1.0,foodDropMul:1.0},
     hard:   {name:'噩梦',icon:'💀',desc:'极限挑战，真正的考验',color:'#ef5350',
              playerHpMul:0.75,playerSpeedMul:0.9,enemyHpMul:1.5,enemySpeedMul:1.3,enemyDmgMul:1.5,
              spawnIntervalMul:0.7,spawnCountMod:1,bossHpMul:2.0,bossSpeedMul:1.3,expMul:0.8,foodDropMul:0.6}

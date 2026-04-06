@@ -22,6 +22,24 @@ import {
 } from './weapons/registry.js';
 import { drawHUD } from './ui/hud.js';
 import { showQuestPanel, hideQuestPanel } from './ui/quest-panel.js';
+
+// Endless mode boss spawn helper
+function spawnEndlessBoss(hpScale, spdScale) {
+  const bd = CFG.DIFFICULTY[window.game.difficulty];
+  window.game.screenFlash = 0.5;
+  screenShake('boss', window.game);
+  SFX.play('boss');
+  const bw = document.getElementById('boss-warning');
+  if (bw) { bw.style.display = 'block'; setTimeout(() => { if(bw) bw.style.display = 'none'; }, 3000); }
+  const angle = Math.random() * Math.PI * 2;
+  const hpMul = (bd.bossHpMul || 1) * hpScale;
+  const spdMul = (bd.bossSpeedMul || 1) * spdScale;
+  window.game.enemies.push(new Enemy('boss',
+    window.game.player.x + Math.cos(angle) * 300,
+    window.game.player.y + Math.sin(angle) * 300,
+    hpMul, spdMul));
+}
+
 import { showShopPanel, hideShopPanel } from './ui/shop-panel.js';
 import { showAchievementPanel, hideAchievementPanel } from './ui/achievement-panel.js';
 
@@ -124,7 +142,6 @@ window.startGame = startGame;
 
 window.pickDiff = function pickDiff(diff) {
   selectedDiff = diff;
-  let isEndless = diff === 'endless';
   if (selectedChar._autoWeapon) {
     beginGame(selectedChar._autoWeapon);
   } else {
@@ -132,6 +149,22 @@ window.pickDiff = function pickDiff(diff) {
   }
 };
 window.pickDiff = pickDiff;
+
+
+function updateEndlessUnlock() {
+  const d = Save.load();
+  const card = document.getElementById('endless-card');
+  if (!card) return;
+  if (d.endlessUnlocked || d.bossKilled) {
+    card.style.opacity = '1';
+    card.style.pointerEvents = 'auto';
+    if (!d.endlessUnlocked) {
+      d.endlessUnlocked = true;
+      Save.save(d);
+    }
+  }
+}
+window.updateEndlessUnlock = updateEndlessUnlock;
 
 window.pickChar = function pickChar(charId) {
   const ch = CFG.CHARACTERS[charId];
@@ -195,6 +228,9 @@ function beginGame(weaponName) {
     chestTimer: CFG.CHEST.spawnInterval,
     shake: null,
     difficulty: selectedDiff,
+    endless: selectedDiff === 'endless',
+    bossCycleIndex: 0,
+    bossKillCount: 0,
     waveToast: null,
     waveToastTimer: 0,
     prevWaveStage: -1,
@@ -261,6 +297,15 @@ function endGame(won) {
   SFX.play(won ? 'victory' : 'gameover');
   const saveResult = Save.record(window.game.player.kills, window.game.elapsed, window.game.player.charId, window.game.player._bestCombo);
 
+  // Endless record tracking
+  if (window.game.endless) {
+    const sd = Save.load();
+    if (window.game.elapsed > (sd.bestEndlessTime || 0)) sd.bestEndlessTime = window.game.elapsed;
+    if (window.game.player.kills > (sd.bestEndlessKills || 0)) sd.bestEndlessKills = window.game.player.kills;
+    if ((window.game.bossKillCount || 0) > (sd.bestEndlessBossKills || 0)) sd.bestEndlessBossKills = window.game.bossKillCount || 0;
+    Save.save(sd);
+  }
+
   // Quest checking
   const stats = {
     charId: window.game.player.charId,
@@ -272,13 +317,20 @@ function endGame(won) {
     bestCombo: window.game.player._bestCombo,
     evolutions: window.game.evolutions || [],
     completedQuestsCount: (Save.load().completedQuests || []).length,
-    killsAt60: window.game.killsAt60
+    killsAt60: window.game.killsAt60,
+    endless: window.game.endless,
+    bossKillCount: window.game.bossKillCount || 0
   };
   const newlyCompleted = CFG.QUESTS.filter(q => q.check(stats)).map(q => q.id);
   const questResult = newlyCompleted.length > 0 ? Save.recordQuests(newlyCompleted) : { firstTime: [] };
 
-  document.getElementById('result-title').textContent = won ? '🏆 胜利! 🏆' : '💀 失败';
-  document.getElementById('result-title').style.color = won ? '#ffd54f' : '#ef5350';
+  if (window.game.endless) {
+    document.getElementById('result-title').textContent = '💀 无尽模式结束';
+    document.getElementById('result-title').style.color = '#ce93d8';
+  } else {
+    document.getElementById('result-title').textContent = won ? '🏆 胜利! 🏆' : '💀 失败';
+    document.getElementById('result-title').style.color = won ? '#ffd54f' : '#ef5350';
+  }
   const m = Math.floor(window.game.elapsed / 60), s = Math.floor(window.game.elapsed % 60);
   const bestM = Math.floor(saveResult.data.bestTime / 60), bestS = Math.floor(saveResult.data.bestTime % 60);
   const newTag = saveResult.newBest ? ' 🆕新纪录!' : '';
@@ -314,7 +366,7 @@ function endGame(won) {
   Save.addSoulFragments(earnedSF);
 
   document.getElementById('result-stats').innerHTML =
-    '击杀: ' + window.game.player.kills + newTag + '&nbsp;&nbsp;存活: ' + m + ':' + s.toString().padStart(2, '0') + '&nbsp;&nbsp;连击: ' + window.game.player._bestCombo + '<br>金币: ' + window.game.player.gold + '&nbsp;&nbsp;💎 +' + earnedSF + ' 灵魂碎片' + questHtml + achieveHtml;
+    (window.game.endless ? '♾ 无尽模式<br>击杀: ' + window.game.player.kills + '&nbsp;&nbsp;存活: ' + m + ':' + s.toString().padStart(2, '0') + '&nbsp;&nbsp;连击: ' + window.game.player._bestCombo + '<br>Boss击杀: ' + (window.game.bossKillCount || 0) + '&nbsp;&nbsp;金币: ' + window.game.player.gold : '击杀: ' + window.game.player.kills + newTag + '&nbsp;&nbsp;存活: ' + m + ':' + s.toString().padStart(2, '0') + '&nbsp;&nbsp;连击: ' + window.game.player._bestCombo) + '<br>金币: ' + window.game.player.gold + '&nbsp;&nbsp;💎 +' + earnedSF + ' 灵魂碎片' + questHtml + achieveHtml;
   setTimeout(() => showScene('result-screen'), 500);
 }
 window.endGame = endGame;
@@ -337,25 +389,46 @@ function loop(time) {
   if (!window.game.paused) {
     window.game.elapsed += dt;
 
-    // Check time
-    if (window.game.elapsed >= CFG.GAME_TIME && !window.game.won) {
+    // Check time (endless mode has no time limit)
+    if (!window.game.endless && window.game.elapsed >= CFG.GAME_TIME && !window.game.won) {
       endGame(false); return;
     }
     // Boss spawn
-    if (window.game.elapsed >= 270 && !window.game.bossSpawned) {
-      window.game.bossSpawned = true;
-      window.game.screenFlash = 0.5;
-      screenShake('boss', window.game);
-      SFX.play('boss');
-      const bw = document.getElementById('boss-warning');
-      bw.style.display = 'block';
-      setTimeout(() => { bw.style.display = 'none'; }, 3000);
-      const angle = Math.random() * Math.PI * 2;
-      const bd = CFG.DIFFICULTY[window.game.difficulty];
-      window.game.enemies.push(new Enemy('boss',
-        window.game.player.x + Math.cos(angle) * 300,
-        window.game.player.y + Math.sin(angle) * 300,
-        bd.bossHpMul, bd.bossSpeedMul));
+    if (!window.game.endless) {
+      // Standard: single boss at 4:30
+      if (window.game.elapsed >= 270 && !window.game.bossSpawned) {
+        window.game.bossSpawned = true;
+        window.game.screenFlash = 0.5;
+        screenShake('boss', window.game);
+        SFX.play('boss');
+        const bw = document.getElementById('boss-warning');
+        bw.style.display = 'block';
+        setTimeout(() => { bw.style.display = 'none'; }, 3000);
+        const angle = Math.random() * Math.PI * 2;
+        const bd = CFG.DIFFICULTY[window.game.difficulty];
+        window.game.enemies.push(new Enemy('boss',
+          window.game.player.x + Math.cos(angle) * 300,
+          window.game.player.y + Math.sin(angle) * 300,
+          bd.bossHpMul, bd.bossSpeedMul));
+      }
+    } else {
+      // Endless: first boss at 4:30, then periodic
+      if (window.game.elapsed >= 270 && !window.game.bossSpawned) {
+        window.game.bossSpawned = true;
+        window.game.bossCycleIndex = 0;
+        window.game.bossKilled = false;
+        spawnEndlessBoss(1.0, 1.0);
+      } else if (window.game.bossSpawned && window.game.bossKilled) {
+        const timeSinceFirst = window.game.elapsed - 270;
+        const nextCycle = Math.floor(timeSinceFirst / CFG.ENDLESS.bossInterval);
+        if (nextCycle > window.game.bossCycleIndex) {
+          const hpScale = Math.pow(CFG.ENDLESS.bossScalePerCycle.hpMul, nextCycle);
+          const spdScale = Math.pow(CFG.ENDLESS.bossScalePerCycle.speedMul, nextCycle);
+          window.game.bossCycleIndex = nextCycle;
+          window.game.bossKilled = false;
+          spawnEndlessBoss(hpScale, spdScale);
+        }
+      }
     }
 
     // Input
@@ -365,9 +438,10 @@ function loop(time) {
     window.game.camera.update(dt);
 
     // Spawn
-    const rate = getSpawnRate(window.game.elapsed);
+    const rate = getSpawnRate(window.game.elapsed, window.game.endless);
     window.game.spawnTimer -= dt;
-    if (window.game.spawnTimer <= 0 && window.game.enemies.length < CFG.MAX_ENEMIES) {
+    const maxEnemies = window.game.endless ? Math.min(CFG.MAX_ENEMIES + Math.floor((window.game.elapsed - 270) / 60) * (CFG.ENDLESS.maxEnemyBonus / 5), CFG.ENDLESS.maxEnemiesCap) : CFG.MAX_ENEMIES;
+    if (window.game.spawnTimer <= 0 && window.game.enemies.length < maxEnemies) {
       window.game.spawnTimer = rate.interval * CFG.DIFFICULTY[window.game.difficulty].spawnIntervalMul;
       const minutes = window.game.elapsed / 60;
       const dc = CFG.DIFFICULTY[window.game.difficulty];
@@ -530,7 +604,20 @@ function loop(time) {
             window.game.foods.push(new Food(e.x + rand(-12, 12), e.y + rand(-12, 12), e.type));
           }
         }
-        if (e.isBoss && window.game.elapsed >= 270) { window.game.bossKilled = true; endGame(true); return; }
+        if (e.isBoss) {
+          window.game.bossKilled = true;
+          if (window.game.endless) {
+            window.game.bossKillCount++;
+            // Boss kill rewards in endless
+            window.game.player.gold += CFG.ENDLESS.bossKillReward.gold;
+            // Drop extra food
+            for (let fi = 0; fi < CFG.ENDLESS.bossKillReward.food; fi++) {
+              window.game.foods.push(new Food(e.x + rand(-12, 12), e.y + rand(-12, 12), 'boss'));
+            }
+          } else {
+            endGame(true); return;
+          }
+        }
         // Splitter: split into 2 small splitters on death
         if (e.splitter && !e.isChild && window.game.enemies.length < CFG.MAX_ENEMIES) {
           const minutes = window.game.elapsed / 60;

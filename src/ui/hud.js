@@ -5,9 +5,14 @@ export function drawHUD(ctx, W, H, dt, game) {
   const player = game.player;
 
   // Timer
-  const remaining = Math.max(0, CFG.GAME_TIME - game.elapsed);
-  const rm = Math.floor(remaining / 60), rs = Math.floor(remaining % 60);
-  document.getElementById('hud-timer').textContent = `${rm}:${rs.toString().padStart(2, '0')}`;
+  if (game.endless) {
+    const em = Math.floor(game.elapsed / 60), es = Math.floor(game.elapsed % 60);
+    document.getElementById('hud-timer').textContent = `♾ ${em}:${es.toString().padStart(2, '0')}`;
+  } else {
+    const remaining = Math.max(0, CFG.GAME_TIME - game.elapsed);
+    const rm = Math.floor(remaining / 60), rs = Math.floor(remaining % 60);
+    document.getElementById('hud-timer').textContent = `${rm}:${rs.toString().padStart(2, '0')}`;
+  }
   document.getElementById('hud-level').textContent = `Lv.${player.level}`;
   document.getElementById('hud-gold').textContent = `\u{1F4B0} ${player.gold}`;
 

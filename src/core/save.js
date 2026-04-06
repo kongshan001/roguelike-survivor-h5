@@ -11,6 +11,10 @@ export const Save = {
       achievedFlags: [],
       soulFragments: 0,
       shopUpgrades: { maxhp: 0, speed: 0, pickup: 0, expbonus: 0, weaponDmg: 0, gold: 0 },
+      endlessUnlocked: false,
+      bestEndlessTime: 0,
+      bestEndlessKills: 0,
+      bestEndlessBossKills: 0,
       characters: {
         mage: { bestScore: 0, bestTime: 0 },
         warrior: { bestScore: 0, bestTime: 0 },
@@ -30,6 +34,10 @@ export const Save = {
       if (!d.completedQuests) d.completedQuests = [];
       if (!d.completedAchievements) d.completedAchievements = [];
       if (!d.achievedFlags) d.achievedFlags = [];
+      if (d.endlessUnlocked === undefined) d.endlessUnlocked = false;
+      if (!d.bestEndlessTime) d.bestEndlessTime = 0;
+      if (!d.bestEndlessKills) d.bestEndlessKills = 0;
+      if (!d.bestEndlessBossKills) d.bestEndlessBossKills = 0;
       return d;
     } catch (e) { return this._default(); }
   },
