@@ -27,6 +27,14 @@ export function drawHUD(ctx, W, H, dt, game) {
     ctx.textAlign = 'center';
     ctx.fillText(synText.trim(), W / 2, H - 70);
   }
+  // Class passive indicator
+  const cp = CFG.CHARACTERS[player.charId];
+  if (cp && cp.classPassive) {
+    ctx.font = '9px monospace';
+    ctx.fillStyle = 'rgba(200,200,255,0.5)';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${cp.classPassive.icon}${cp.classPassive.name}`, 10, H - 30);
+  }
   // Exp bar
   const nextExp = player.level < CFG.EXP_TABLE.length ? CFG.EXP_TABLE[player.level] : 999;
   document.getElementById('exp-bar').style.width = `${(player.exp / nextExp * 100).toFixed(1)}%`;
