@@ -12,13 +12,423 @@
 | P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | ✅ 设计规格书完成 |
 | P1 | 网络协议详细规格书（消息定义/快照格式/断线重连） | ✅ Drive #11 完成 |
 | P1 | 联机前置任务清单（前端 1 页精简清单） | ✅ Drive #15 已输出 |
-| P1 | 序列化接口规格书（待积累更新：无尽模式 + critDmgBonus/goldDropBonus + 9新协同 + BoomerangSnap + 毒雾poison + 2新敌人 + 4关卡敌人 + 2新Boss + stageId + secrets + skills面板 + Weapon Mastery预评估） | ⚠️ Drive #28 评估：Weapon Mastery对联机无新增影响，累积更新项增至21项 |
+| P1 | 序列化接口规格书（待积累更新：无尽模式 + critDmgBonus/goldDropBonus + 9新协同 + BoomerangSnap + 毒雾poison + 2新敌人 + 4关卡敌人 + 2新Boss + stageId + secrets + skills面板 + Weapon Mastery + Pet/伙伴系统） | ⚠️ Drive #29 评估：Pet新增PetSnap+PetBulletSnap，累积更新项增至24项 |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，待前端实现 |
 | P1 | 无尽模式联机适配方案（房间生命周期/状态同步限流/存档验证） | ⚠️ Drive #24 评估完成，关键风险已识别，待联机阶段实施 |
 | P1 | 多关卡系统联机适配方案（房间stage参数/spawner改造/关卡敌人/Boss序列化） | ⚠️ Drive #27 评估完成，核心改造：spawner增加stage参数 + 房间数据新增stageId |
 | P1 | Weapon Mastery 联机影响预评估（weaponDmgMul持久化同步/服务器端验证） | ⚠️ Drive #28 预评估完成：weaponDmgMul已在Drive #12评估，Mastery是永久乘数，服务器端import同config即可 |
+| P1 | Pet/伙伴系统联机序列化影响评估（Pet跟随AI+投射物+控场+闪电链） | ⚠️ Drive #29 评估完成：新增PetSnap/PetBulletSnap/状态机字段，快照+~300-600B |
 | P2 | 服务器 MVP 原型（2人同房间联机） | ⏳ 已评估，阻塞于 P1 前端实现 |
 | P2 | Docker 容器化部署方案 | 待评估（低优先级） |
+
+---
+
+## 2026-04-06 -- Drive #29: Pet/伙伴系统对联机序列化的影响评估
+
+### 背景
+
+策划 Drive #29 完成了 v2.4 Pet/伙伴系统设计规格书（`docs/superpowers/specs/2026-04-06-pet-companion-system-design.md`），核心内容：
+
+1. **3 种 Pet 实体**：火焰精灵(FlameSprite, 投射型)、冰霜守护(FrostGuard, 控场型)、闪电猎鹰(LightningHawk, 俯冲型)
+2. **跟随 AI**：Pet 跟随玩家移动，各有不同的跟随角度和距离，闪电猎鹰特殊为环绕飞行
+3. **攻击 AI**：各自独立的攻击模式 -- 火球投射(火焰精灵)、锥形减速(冰霜守护)、俯冲攻击(闪电猎鹰)
+4. **升级系统**：Pet 通过标准升级池获取和升级（不与武器/被动竞争独立槽位），最高 3 级
+5. **Player 扩展**：新增 `this.pet = null` 字段
+6. **gameStats 扩展**：新增 `petKills: 0`
+7. **Save 扩展**：新增 `petFirst: false`, `petMax: false` 成就标记
+8. **未来扩展**：v2.5 Pet 协同系统（3 个 Pet+武器协同）、v2.6 进化 Pet
+
+当前版本 v1.6.4，Pet 系统设计规格已完成，尚未实现，属于 v2.4 规划。
+
+涉及文件变更（预计）：
+
+| 变更项 | 涉及文件 | 具体内容 |
+|--------|---------|---------|
+| CFG.PETS 常量块 | `src/core/config.js` | 3 种 Pet 配置 + 全局设置 |
+| CFG.ACHIEVEMENTS 新增 2 条 | `src/core/config.js` | pet_first / pet_max |
+| CFG.QUESTS 新增 1 条 | `src/core/config.js` | pet_kill_30 |
+| 新建 Pet 类 | `src/entities/pet.js` (新增) | Pet 类（跟随AI + 攻击AI + 3种行为 + 绘制） |
+| Player 新增 pet 字段 | `src/entities/Player.js` | `this.pet = null` |
+| Pet 创建/更新/绘制 | `src/game.js` | loop() 中集成 Pet 更新 |
+| Pet 击杀追踪 | `src/game.js` | gameStats.petKills |
+| 升级池扩展 | `src/ui/upgrade-generate.js` | pet_get / pet_upgrade 选项 |
+| 升级面板渲染 | `src/ui/upgrade-panel.js` | Pet 选项显示 |
+| HUD 显示 | `src/ui/hud.js` | Pet 信息区域 |
+| Save 扩展 | `src/core/save.js` | petFirst / petMax + 迁移 |
+
+### 一、Pet 实体对序列化接口的影响
+
+#### 1.1 Pet 类的核心字段分析
+
+设计规格定义的 Pet 实体结构：
+
+```js
+class Pet {
+  constructor(petId) {
+    this.id = petId;           // 'flamesprite' | 'frostguard' | 'lightninghawk'
+    this.x = 0; this.y = 0;   // 跟随时更新
+    this.level = 1;            // 1-3
+    this.size = cfg.size;      // 固定属性
+    this.color = cfg.color;    // 固定属性
+    this.attackCD = 0;         // 攻击冷却（秒）
+    this.state = 'follow';     // follow / attack / dive / return
+    this.targetX = 0; this.targetY = 0;  // 俯冲目标（闪电猎鹰专用）
+    this.projectiles = [];     // 火球列表（火焰精灵专用）
+  }
+}
+```
+
+逐字段序列化分析：
+
+| 字段 | 类型 | 序列化需求 | 理由 |
+|------|------|-----------|------|
+| `id` | `string` | 需要 | 标识 Pet 类型，决定客户端渲染和行为 |
+| `x, y` | `number` | 需要 | Pet 位置，远程客户端需渲染 |
+| `level` | `number` | 需要 | 决定攻击参数和视觉表现 |
+| `size` | `number` | 不序列化 | 固定属性，从 CFG.PETS[id].size 获取 |
+| `color` | `string` | 不序列化 | 固定属性，从 CFG.PETS[id].color 获取 |
+| `attackCD` | `number` | 需要 | 决定攻击时机，客户端需正确渲染冷却动画 |
+| `state` | `string` | **需要** | 决定 Pet 行为模式（跟随/俯冲/返回），客户端渲染差异大 |
+| `targetX, targetY` | `number` | 需要（仅闪电猎鹰） | 俯冲目标位置，影响飞行路径渲染 |
+| `projectiles[]` | `object[]` | 需要（仅火焰精灵） | 火球是独立碰撞实体，必须同步 |
+
+#### 1.2 新增 PetSnap 接口
+
+```typescript
+interface PetSnap {
+  id: string;                    // 'flamesprite' | 'frostguard' | 'lightninghawk'
+  x: number;                     // 整数像素
+  y: number;                     // 整数像素
+  level: number;                 // 1-3
+  attackCD: number;              // 冷却倒计时（秒，2位小数）
+  state: 'follow' | 'attack' | 'dive' | 'return';  // 行为状态
+  targetX?: number;              // 俯冲目标 x（仅 lightninghawk 使用）
+  targetY?: number;              // 俯冲目标 y（仅 lightninghawk 使用）
+  projectiles?: PetBulletSnap[]; // 火球列表（仅 flamesprite 使用）
+  // 不序列化: size, color（从 CFG.PETS[id] 获取）
+}
+
+interface PetBulletSnap {
+  x: number;                     // 整数像素
+  y: number;                     // 整数像素
+  vx: number;                    // 速度向量（整数）
+  vy: number;                    // 速度向量（整数）
+  dmg: number;                   // 伤害值（1位小数）
+  pierce: number;                // 剩余穿透次数
+  life: number;                  // 剩余飞行距离/时间（1位小数）
+  burn?: { dur: number; dps: number };  // Lv2+ 点燃效果
+}
+```
+
+**设计理由**：
+
+| 决策 | 理由 |
+|------|------|
+| PetSnap 作为 PlayerSnap 的子字段而非独立顶级数组 | Pet 是玩家拥有的实体（1对1），不独立存在；跟随位置依赖玩家坐标，放在 PlayerSnap 内更语义化 |
+| state 字段必须序列化 | `dive`/`return` 状态下 Pet 视觉表现完全不同（俯冲拖尾 vs 跟随），丢失状态会导致客户端渲染跳跃 |
+| targetX/targetY 为可选 | 仅闪电猎鹰使用俯冲机制，其他两种 Pet 不需要这两个字段 |
+| projectiles 为可选 | 仅火焰精灵使用投射物，冰霜守护和闪电猎鹰的攻击不产生独立子弹 |
+
+### 二、三种 Pet 攻击模式的联机影响分析
+
+#### 2.1 火焰精灵 (FlameSprite) -- 投射型
+
+**攻击流程**：发射火球 -> 碰撞检测 -> 伤害+点燃 -> 穿透继续
+
+**与现有投射武器的对比**：
+
+| 维度 | Knife (飞刀) | FlameSprite (火球) | 联机处理方式 |
+|------|-------------|-------------------|------------|
+| 子弹容器 | `game.bullets[]` | `pet.projectiles[]` | 需额外采集（同 Boomerang） |
+| 穿透 | pierceLeft | pierce | 同机制，不同字段名 |
+| 点燃 | 无 | Lv2+ 有 burnDur/burnDps | 与 FireStaff._burn 同格式 |
+| hit 追踪 | `hit: Set<Enemy>` | 需要（防止重复命中） | 不序列化，反序列化时重建空 Set |
+
+**关键结论**：火焰精灵的火球投射与 Boomerang 的 `weapon.projectiles[]` 是完全相同的架构模式 -- 子弹存储在实体内部数组而非 `game.bullets[]`。序列化方案直接复用 Boomerang 的处理策略：在 `snapshot()` 中额外遍历 Pet 的 projectiles 并采集。
+
+**PetBulletSnap 与 BulletSnap 的关系**：
+
+PetBulletSnap 比 BulletSnap 更简单：没有 frostSlow/frostFreeze 等冰冻系列字段，只有 burn 可选字段。可以视为 BulletSnap 的子集。
+
+**快照大小估算**：
+
+| 组件 | 数量 | 单条 | 小计 |
+|------|------|------|------|
+| PetBulletSnap (Lv1) | 最多 1 个同时 | ~70B | 70B |
+| PetBulletSnap (Lv3, 0.6s CD) | 最多 3 个同时 | ~90B (含 burn) | 270B |
+
+火焰精灵 Lv3 最坏情况：每 0.6s 发射一颗，火球射程 220px、速度 250px/s = 飞行时间 0.88s，同时存在约 1-2 颗火球。实际远低于理论上限。
+
+#### 2.2 冰霜守护 (FrostGuard) -- 控场型
+
+**攻击流程**：锥形范围检测 -> 减速+伤害 -> 可选冰冻
+
+**关键特征**：冰霜守护的攻击是即时范围效果（instant AoE），不产生独立子弹/投射物。与 FrostAura (冰冻光环) 的机制类似。
+
+**与 FrostAura 的对比**：
+
+| 维度 | FrostAura | FrostGuard | 联机处理差异 |
+|------|-----------|-----------|------------|
+| 攻击方式 | 持续光环 | 间隔性锥形喷射 | FrostGuard 有 CD |
+| 减速效果 | _slow + _slowTimer | _slow + _slowTimer | 同机制 |
+| 冰冻效果 | _frozen | Lv3: 5% 冻结 | 同机制 |
+| 子弹/投射物 | 无 | 无 | 均不产生 |
+
+**联机处理**：冰霜守护的攻击结果（减速/冰冻）已体现在 EnemySnap 的 `_slow`/`_frozen` 字段中（Drive #19 已定义）。PetSnap 只需同步 `attackCD` 让客户端正确渲染攻击动画即可。
+
+**额外序列化需求**：无。攻击效果通过现有 EnemySnap 字段完全覆盖。
+
+#### 2.3 闪电猎鹰 (LightningHawk) -- 俯冲型
+
+**攻击流程**：索敌 -> 俯冲(dive) -> 命中伤害 -> 折返(return) -> 回到跟随位置 -> 冷却
+
+**状态机**：
+
+```
+follow (跟随) -- 索敌成功 --> dive (俯冲)
+dive -- 命中/超距 --> return (折返)
+return -- 到达跟随位置 --> follow
+```
+
+**与现有武器的对比**：
+
+闪电猎鹰的俯冲攻击是全新的行为模式，与任何现有武器都不同。关键特征：
+
+| 特征 | 说明 | 联机影响 |
+|------|------|---------|
+| 俯冲状态(dive) | Pet 离开跟随位置飞向目标 | 必须同步 state='dive' + targetX/targetY，否则客户端渲染错误 |
+| 折返状态(return) | Pet 从目标飞回跟随位置 | 同上，state='return' |
+| 俯冲伤害 | dmg * weaponDmgMul，即时执行 | 伤害体现在 EnemySnap.hp 变化中 |
+| Lv3 闪电链 | 命中后 30% 触发，伤害6/2链/50%衰减 | 与 Lightning 武器的闪电链同机制 |
+
+**Lv3 闪电链的联机复现**：
+
+闪电猎鹰 Lv3 的闪电链与 Lightning 武器的 `triggerLightningChain()` 是同类逻辑（链式跳跃伤害）。联机时两种来源的闪电链在服务器端使用相同的链式跳跃实现，参数不同（猎鹰: targets=2, dmg=6, chains=2, decay=0.5; 闪电: 由 CFG.LIGHTNING 配置决定）。
+
+服务器端复现复杂度：低。纯距离判定 + 伤害计算 + 链式递归（最多 2 跳），无随机因素（概率 30% 由 `Math.random()` 决定，联机时由服务器端统一随机源驱动）。
+
+### 三、Player 扩展对 PlayerSnap 的影响
+
+Player 新增 `this.pet = null` 字段。序列化方案：
+
+```typescript
+interface PlayerSnap {
+  // ... 现有字段（~30 个） ...
+  pet?: PetSnap | null;  // 新增：Pet 实体快照，null 表示未拥有
+}
+```
+
+**序列化策略**：
+
+| Pet 状态 | PlayerSnap.pet 值 | 大小 |
+|---------|-------------------|------|
+| 未拥有 Pet | `null` 或省略 | 0-6B |
+| 拥有 Pet (follow 状态) | PetSnap (基础字段) | ~80-100B |
+| 拥有 Pet (dive/return 状态) | PetSnap (含 targetX/Y) | ~110-130B |
+| 火焰精灵 + 火球 | PetSnap + PetBulletSnap[] | ~150-370B |
+
+**多玩家场景**：2-4 人联机，每人都可能有 Pet。最多 4 个 Pet = 额外 400-520B（不含火球）或 600-1480B（含火球最坏情况）。
+
+### 四、gameStats.petKills 和 Save 扩展的联机影响
+
+| 字段 | 数据存储 | 网络传输 | 联机影响 |
+|------|---------|---------|---------|
+| `gameStats.petKills` | 会话内变量 | 无 | 各客户端独立追踪 |
+| `Save.petFirst` | localStorage | 无 | 各客户端独立追踪（成就标记） |
+| `Save.petMax` | localStorage | 无 | 各客户端独立追踪（成就标记） |
+
+**结论**：与成就/Secrets/Weapon Mastery 完全一致 -- 纯客户端本地数据，联机时各客户端独立追踪。服务器端不需要知道 petKills/petFirst/petMax。
+
+### 五、Pet 伤害公式与 weaponDmgMul 的一致性
+
+设计规格定义：
+
+```
+Pet 实际伤害 = baseDmg * (game.weaponDmgMul || 1)
+```
+
+这与武器的 `Weapon.applyDmg()` 公式完全一致（Drive #12 已评估 weaponDmgMul）。Pet 伤害作为 weaponDmgMul 的又一个消费者，处理方式相同：
+
+| 维度 | 分析 |
+|------|------|
+| weaponDmgMul 来源 | beginGame() 时从 Save.shopUpgrades 加载，局内固定 |
+| 服务器端获取方式 | import config.js + 从房间/玩家数据读取 |
+| 是否需要新增 PlayerSnap 字段 | 否 -- weaponDmgMul 已在 Drive #12 评估，不新增序列化字段 |
+| Pet 伤害是否需要单独序列化 | 否 -- 伤害体现在 EnemySnap.hp 变化中 |
+
+### 六、服务器端 Pet 逻辑复现评估
+
+| 逻辑 | 复杂度 | 说明 |
+|------|--------|------|
+| 跟随 AI（lerp 平滑移动） | 低 | 纯算术，`x += (targetX - x) * smooth` |
+| 闪电猎鹰环绕飞行 | 低 | 角度累加 + sin/cos，纯算术 |
+| 索敌逻辑 | 低 | 距离判定 + 找最近，可复用 Weapon.findNearestEnemy() |
+| 火球碰撞检测 | 中 | 复用现有碰撞框架，需遍历敌人 + 距离判定 |
+| 锥形范围判定（冰霜守护） | 低 | 角度比较 + 距离判定，与 FrostAura 同类 |
+| 俯冲/折返状态机 | 低 | 状态切换 + moveToward |
+| 闪电链（Lv3 猎鹰） | 中 | 复用 Lightning 的链式跳跃逻辑 |
+| 击杀归属 | 低 | Pet 击杀计入玩家，需标记伤害来源 |
+
+**总体评估**：服务器端 Pet 逻辑复现复杂度为**低到中**。所有行为都是确定性计算（无随机或仅服务器端统一随机），可以复用大量现有逻辑（跟随移动、索敌、碰撞检测、闪电链）。
+
+**Pet 击杀归属的新增需求**：
+
+当前击杀归属在 game.js 中通过"子弹拥有者"追踪。Pet 击杀需要类似机制：
+
+```typescript
+// 服务器端：Pet 攻击时标记伤害来源
+function petAttackEnemy(pet, enemy, dmg) {
+  const actualDmg = dmg * gameState.weaponDmgMul;
+  enemy.hp -= actualDmg;
+  if (enemy.hp <= 0) {
+    // 击杀归属 Pet 的拥有者玩家
+    gameState.players[pet.ownerId].kills++;
+    gameState.petKills++;
+  }
+}
+```
+
+### 七、快照大小更新汇总
+
+| 变更项 | 额外大小 | 说明 |
+|--------|---------|------|
+| PlayerSnap.pet (基础 PetSnap) | +80-130B | 含 id/x/y/level/attackCD/state/targetX/Y |
+| PetBulletSnap (火焰精灵, 1-2 火球) | +70-180B | Lv3 最坏 2-3 个火球 |
+| 冰霜守护/闪电猎鹰无投射物 | +0B | 不产生独立子弹 |
+| gameStats.petKills | +0B | 纯客户端本地数据 |
+| Save.petFirst/petMax | +0B | 纯客户端本地数据 |
+| **单人合计** | **+80-310B** | 取决于 Pet 类型和等级 |
+| **4 人最坏合计** | **+320-1240B** | 4 人各持火焰精灵 Lv3 |
+
+总快照大小从 ~6.9-8.9KB（Drive #27/28 估算）增加到 ~7.2-10.1KB（4 人各持火焰精灵 Lv3 的极端场景），仍在带宽预算内（60KB/s 下行）。视野裁剪后 Pet 不受影响（Pet 跟随玩家，始终在视野内），实际增量更小。
+
+### 八、与 Boomerang 投射物架构的统一性分析
+
+Pet 的火球投射与 Boomerang 的投射物共享相同的架构问题：**存储在实体内部数组而非 `game.bullets[]`**。
+
+当前代码库中存在"内部投射物"的实体清单（截至 v1.6.4）：
+
+| 实体 | 投射物容器 | 投射物类型 |
+|------|-----------|-----------|
+| Boomerang | `weapon.projectiles[]` | 回旋镖 |
+| Thunderang | `weapon.projectiles[]` | 雷旋镖 + 闪电特效 |
+| Blazerang | `weapon.projectiles[]` | 火旋镖 + 火焰轨迹 |
+| **Pet (火焰精灵)** | **`pet.projectiles[]`** | **火球** |
+
+**建议**：在序列化规格书 v2.0 中，统一处理所有"内部投射物"的采集逻辑。方案：
+
+```typescript
+// snapshot() 中统一的内部投射物采集
+function collectInternalBullets(game: Game): BulletSnap[] {
+  const bullets: BulletSnap[] = [];
+
+  // 1. 武器内部投射物（Boomerang 系列）
+  for (const w of game.player.weapons) {
+    if (w.projectiles?.length) {
+      bullets.push(...w.projectiles.map(p => weaponBulletToSnap(w.name, p)));
+    }
+  }
+
+  // 2. Pet 内部投射物（火焰精灵火球）
+  if (game.player.pet?.projectiles?.length) {
+    bullets.push(...game.player.pet.projectiles.map(p => petBulletToSnap(p)));
+  }
+
+  return bullets;
+}
+```
+
+这种统一采集方式避免了 snapshot() 中出现越来越多的特殊分支，是更好的长期架构。
+
+### 九、升级池扩展对服务器端验证的影响
+
+设计规格将 Pet 获取/升级加入标准升级池。在半授权模型中，升级选择需要服务器端验证。
+
+**联机时的升级流程**：
+
+```
+客户端: 选择 pet_get 或 pet_upgrade -> 发送 upgrade_pick 消息
+服务器: 验证 (1) 玩家等级 >= 3 (2) 未拥有 Pet (pet_get) 或 Pet 未满级 (pet_upgrade)
+服务器: 执行升级 -> 创建 Pet 实例或 Pet.level++
+服务器: 下一个快照中包含更新后的 PlayerSnap.pet
+```
+
+**服务器端验证规则**：
+
+| 验证项 | pet_get | pet_upgrade |
+|--------|---------|-------------|
+| 玩家等级 >= 3 | 是 | 是 |
+| 未拥有 Pet | 是 | 否 |
+| Pet 未满级 (level < 3) | N/A | 是 |
+| 升级池权重检查 | getWeight: 2 | upgradeWeight: 3 |
+| 唯一性（最多1只） | 是 | N/A |
+
+这些验证规则与武器/被动升级验证是同类逻辑（条件检查 + 权限判定），不新增服务器端复杂度。
+
+### 十、序列化规格书累积更新项汇总
+
+Drive #19 产出的序列化接口规格书（v1.0, 基于 v1.4.0）已累积以下待更新项：
+
+| # | 来源 | 更新项 | Drive |
+|---|------|--------|-------|
+| 1 | 无尽模式 | GameSnapshot 新增 endless/bossCycleIndex/bossKillCount | #24 |
+| 2 | 幸运硬币 | PlayerSnap 新增 critDmgBonus/goldDropBonus | #23 |
+| 3-11 | 9 新协同 | activeSynergies 扩展 15->21 种 | #23+#25 |
+| 12 | BoomerangSnap | BulletSnap 新增 BoomerangSnap 子类型 | #20+#21 |
+| 13 | TrailSnap | Blazerang 火焰轨迹同步 | #21 |
+| 14 | 毒雾 | EnemySnap 新增 poison 可选字段 | #25 |
+| 15-16 | 2 新敌人 | EnemySnap 新增 shielded/exploder/fusing/fuseTimer | #26 |
+| 17 | 爆炸事件 | EventSnap.type 新增 "explosion" | #26 |
+| 18-19 | 4 关卡敌人 | EnemySnap 新增 lavaTrail/trails + PlayerSnap 新增 burn 可选 | #27 |
+| 20 | 多关卡 | GameSnapshot 新增 stage + EventSnap 新增 summon/lava_pool + BulletSnap 扩展 | #27 |
+| 21 | Secrets | 零更新项（纯客户端 localStorage） | #27 |
+| 22 | Weapon Mastery | 零更新项（永久乘数，不新增序列化字段） | #28 |
+| **23** | **Pet 基础** | **PlayerSnap 新增 pet?: PetSnap** | **#29** |
+| **24** | **Pet 火球** | **新增 PetBulletSnap 子类型（火焰精灵投射物）** | **#29** |
+| **25** | **Pet 状态机** | **PetSnap.state 同步（follow/attack/dive/return）** | **#29** |
+
+**累积 25 项**，其中 Pet 系统贡献 3 项新增序列化需求。维持"累积更新，一次性合并"策略。
+
+### 十一、阻塞状态复查（连续第 17 次）
+
+| 后端产出物 | 状态 | 前端依赖 |
+|-----------|------|---------|
+| 联机技术调研报告 | 完成 | 无 |
+| 联机架构设计规格书 | 完成 | 无 |
+| 网络协议详细规格书 | **需更新（stage 参数 + lava_pool/summon 事件 + fireball 子弹 + player burn + hazards 概念）** | 前端评审 |
+| 联机前置任务清单 | 完成 | 无（已交付前端参考） |
+| 序列化接口规格书 | **需更新（25 项累积更新，含 Pet 3 项新增）** | 前端评审 + 实现 |
+| Player 拆分方案 | 设计完成 | 前端评审 + 实现 |
+| 服务器 MVP 原型 | 评估完成 | 依赖上述两项前端实现 |
+
+前端当前版本 v1.6.4，v2.4 规划包含：Pet/伙伴系统。Player 拆分仍未排入前端迭代计划。
+
+### 十二、建议汇总
+
+| 建议 | 优先级 | 阶段 | 说明 |
+|------|--------|------|------|
+| PlayerSnap 新增 pet?: PetSnap 可选字段 | 中 | v2.4 序列化更新 | Pet 是玩家子实体 |
+| 新增 PetBulletSnap 子类型 | 中 | v2.4 序列化更新 | 火焰精灵火球投射物 |
+| PetSnap.state 必须序列化 | 中 | v2.4 序列化更新 | 俯冲/折返状态影响视觉表现 |
+| 统一内部投射物采集逻辑 | 低 | 序列化重构 | Boomerang + Pet 投射物统一采集函数 |
+| 闪电猎鹰 Lv3 闪电链复用 Lightning 逻辑 | 低 | 联机 MVP | 服务器端已有链式跳跃实现 |
+| Pet 击杀归属标记 | 低 | 联机 MVP | 需在 Pet 攻击时标记 ownerPlayerId |
+| gameStats.petKills 联机时各客户端独立追踪 | 信息 | - | 与成就/Secrets 处理方式一致 |
+| Save.petFirst/petMax 联机时各客户端独立追踪 | 信息 | - | 与成就/Secrets 处理方式一致 |
+
+### 决策记录
+
+- Pet 系统引入 3 项新增序列化需求：(1) PlayerSnap.pet PetSnap 子结构 (2) PetBulletSnap 火球投射物 (3) PetSnap.state 状态机同步。累积更新项从 22 增至 25
+- PetSnap 设计为 PlayerSnap 的子字段而非独立顶级数组，理由：Pet 是 1 对 1 玩家拥有关系，语义上属于玩家状态的一部分
+- 火焰精灵的火球投射与 Boomerang 的 `weapon.projectiles[]` 共享相同的"内部投射物"架构问题，序列化方案直接复用 Boomerang 的额外采集策略
+- 冰霜守护的攻击不产生独立子弹（即时 AoE），攻击效果通过现有 EnemySnap 的 `_slow`/`_frozen` 字段完全覆盖，无额外序列化负担
+- 闪电猎鹰的俯冲攻击引入 4 状态机（follow/attack/dive/return），`state` 字段必须序列化以保证客户端正确渲染飞行路径。`targetX/targetY` 仅在 dive 状态有意义
+- 闪电猎鹰 Lv3 闪电链与 Lightning 武器的 `triggerLightningChain()` 是同类逻辑，服务器端可复用链式跳跃实现
+- Pet 伤害公式 `baseDmg * weaponDmgMul` 与武器一致，不新增 PlayerSnap 字段。weaponDmgMul 在 Drive #12 已评估
+- gameStats.petKills / Save.petFirst / Save.petMax 均为纯客户端本地数据，联机时各客户端独立追踪
+- 快照大小增加 +80-310B/玩家（取决于 Pet 类型），4 人极端场景 +320-1240B，总快照 ~7.2-10.1KB，仍在带宽预算内
+- 建议在序列化规格书 v2.0 中统一处理所有"内部投射物"（Boomerang + Pet）的采集逻辑，避免 snapshot() 中的特殊分支膨胀
+- 连续第 17 次阻塞确认。后端设计产出物已完备，等待前端排入 Player 拆分和序列化实现
 
 ---
 
