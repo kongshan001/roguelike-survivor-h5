@@ -155,13 +155,9 @@ function updateEndlessUnlock() {
   const d = Save.load();
   const card = document.getElementById('endless-card');
   if (!card) return;
-  if (d.endlessUnlocked || d.bossKilled) {
+  if (d.endlessUnlocked) {
     card.style.opacity = '1';
     card.style.pointerEvents = 'auto';
-    if (!d.endlessUnlocked) {
-      d.endlessUnlocked = true;
-      Save.save(d);
-    }
   }
 }
 window.updateEndlessUnlock = updateEndlessUnlock;
@@ -169,6 +165,7 @@ window.updateEndlessUnlock = updateEndlessUnlock;
 window.pickChar = function pickChar(charId) {
   const ch = CFG.CHARACTERS[charId];
   selectedChar = { id: charId, ...ch };
+  updateEndlessUnlock();
   if (ch.chooseWeapon) {
     showScene('diff-select');
   } else {
@@ -296,6 +293,15 @@ function endGame(won) {
   confirmEl.style.display = 'none';
   SFX.play(won ? 'victory' : 'gameover');
   const saveResult = Save.record(window.game.player.kills, window.game.elapsed, window.game.player.charId, window.game.player._bestCombo);
+
+  // Unlock endless mode on first boss kill (standard mode win)
+  if (won && !window.game.endless) {
+    const sd = Save.load();
+    if (!sd.endlessUnlocked) {
+      sd.endlessUnlocked = true;
+      Save.save(sd);
+    }
+  }
 
   // Endless record tracking
   if (window.game.endless) {
@@ -448,7 +454,7 @@ function loop(time) {
       const hpMul = (1 + minutes * 0.2) * dc.enemyHpMul;
       const spdMul = (1 + minutes * 0.1) * dc.enemySpeedMul;
       const dc2 = CFG.DIFFICULTY[window.game.difficulty];
-      for (let i = 0; i < Math.max(1, rate.count + dc2.spawnCountMod) && window.game.enemies.length < CFG.MAX_ENEMIES; i++) {
+      for (let i = 0; i < Math.max(1, rate.count + dc2.spawnCountMod) && window.game.enemies.length < maxEnemies; i++) {
         const type = rate.types[randInt(0, rate.types.length - 1)];
         const angle = Math.random() * Math.PI * 2;
         const d = rand(250, 400);
