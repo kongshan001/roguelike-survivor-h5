@@ -48,6 +48,31 @@
 
 ---
 
+## 2026-04-06 -- Drive #27: 前端状态巡检 + skill-panel验证
+
+### 成果
+- **QA P0 bug扫描**: qa-log.md当前无P0 bug，所有缺陷(BUG-001~013 + ENH-001/002)均已关闭
+- **frontend-research.md可落地项审查**: P0优化全部已落地（distSq消除sqrt/AABB先行判断/sprite-cache离屏缓存），剩余P1项（空间哈希/固定时间步/粒子系统SoA/转向行为）需专门功能迭代推进
+- **skill-panel.js完整性验证**: 文件存在于 `src/ui/skill-panel.js`（164行），导出5个函数：
+  - `toggleSkillPanel()` / `hideSkillPanel()` / `showSkillToggle()` / `hideSkillToggle()` / `updateSkillPanel()`
+  - game.js 第25行正确import `updateSkillPanel/showSkillToggle/hideSkillToggle`
+  - scenes.js 正确import `hideSkillToggle` 并在场景切换时管理可见性
+  - index.html 第92-93行包含 `#skill-toggle` 和 `#skill-panel` HTML元素，CSS样式在第62-73行
+  - 武器详情函数 `getWeaponDetail(w)` 覆盖全部15种武器（7基础+8进化）
+  - 被动详情函数 `getPassiveDetail(key, stacks)` 覆盖全部7种被动（含luckycoin）
+  - 确认无集成问题，模块完全可用
+- **JS语法检查**: 12个核心文件全部通过 `node --check`
+- **E2E测试**: 14/14 全部通过（4.6分钟），零回归
+
+### 技术债务（维持不变）
+- 网格空间哈希碰撞检测（敌人>80时启用）-- P1
+- 固定时间步游戏循环（Timestep Fixing）-- P1
+- 成就面板未做分类过滤/排序
+- 缺少成就完成时弹窗通知
+- 商店面板效果描述未显示下一级预览
+
+---
+
 ## 2026-04-06 -- Drive #26: 前端状态巡检 + BUG-010确认
 
 ### 成果
