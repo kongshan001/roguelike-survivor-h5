@@ -12,10 +12,369 @@
 | P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | ✅ 设计规格书完成 |
 | P1 | 网络协议详细规格书（消息定义/快照格式/断线重连） | ✅ Drive #11 完成 |
 | P1 | 联机前置任务清单（前端 1 页精简清单） | ✅ Drive #15 已输出 |
-| P1 | 序列化接口规格书（需更新：critDmgBonus/goldDropBonus + 6新协同） | ⚠️ Drive #23 确认：PlayerSnap 新增2字段，待前端实现 |
+| P1 | 序列化接口规格书（需更新：无尽模式字段 + critDmgBonus/goldDropBonus + 6新协同） | ⚠️ Drive #24 确认：PlayerSnap + GameSnap 需新增无尽模式字段，待前端实现 |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，待前端实现 |
+| P1 | 无尽模式联机适配方案（房间生命周期/状态同步限流/存档验证） | ⚠️ Drive #24 评估完成，关键风险已识别，待联机阶段实施 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | ⏳ 已评估，阻塞于 P1 前端实现 |
 | P2 | Docker 容器化部署方案 | 待评估（低优先级） |
+
+---
+
+## 2026-04-06 -- Drive #24: 无尽模式(Endless Mode)对联机架构的影响评估
+
+### 背景
+
+前端完成了无尽模式(Endless Mode)实现，涉及以下核心变更：
+
+1. **游戏状态新增字段** (`window.game`):
+   - `endless: boolean` -- 是否无尽模式
+   - `bossCycleIndex: number` -- 当前Boss周期（0=首个Boss）
+   - `bossKillCount: number` -- Boss击杀计数
+   - `waveToast/waveToastTimer/prevWaveStage` -- 波次提示（已存在但未完全使用）
+
+2. **Boss周期系统**: 首个Boss在270s出现，之后每240s出现一个，HP/速度指数级增长
+   - `bossScalePerCycle: { hpMul: 1.5, speedMul: 1.1 }` -- 每周期 HP x1.5, 速度 x1.1
+
+3. **动态敌群上限**: 从70随时间增长到100
+   - `maxEnemiesCap: 100`, `maxEnemyBonus: 30`
+
+4. **出兵节奏持续加速**: 间隔最低降至0.25s，每批最多8只
+
+5. **存档新增字段**: `endlessUnlocked`, `bestEndlessTime`, `bestEndlessKills`, `bestEndlessBossKills`
+
+6. **无时间限制**: 游戏可以无限运行（标准模式300s硬上限被移除）
+
+涉及文件变更：
+
+| 变更项 | 涉及文件 | 具体内容 |
+|--------|---------|---------|
+| CFG.ENDLESS 常量块 | `src/core/config.js` | 完整的无尽模式配置参数（L286-299） |
+| 游戏状态初始化 | `src/game.js` | beginGame() 新增 endless/bossCycleIndex/bossKillCount 等字段（L231-236） |
+| Boss周期生成逻辑 | `src/game.js` | loop() 中无尽Boss生成分支（L416-431） |
+| 动态敌群上限 | `src/game.js` | maxEnemies 计算（L443） |
+| 存档扩展 | `src/core/save.js` | _default() 新增 4 个无尽模式字段（L14-17） |
+| 结算逻辑 | `src/game.js` | endGame() 无尽记录追踪 + 无尽专属结算UI（L301-307, L327-333, L369） |
+| 出兵加速 | `src/systems/spawner.js` | getSpawnRate() 无尽分支（L12-18） |
+| 无尽模式Quest | `src/core/config.js` | QUESTS 新增 4 个无尽挑战（L219-223） |
+| 难度配置 | `src/core/config.js` | DIFFICULTY.endless 配置（L110-112） |
+
+### 一、状态同步量：无限时长对带宽的影响
+
+**核心问题**：标准模式5分钟、30-70敌人，快照 ~6KB/100ms = 60KB/s 下行。无尽模式持续时间无上限，后期敌人100个，是否超出带宽预算？
+
+**带宽估算 -- 无尽模式后期（10分钟+）最坏情况**：
+
+| 组件 | 标准模式(30敌人) | 无尽后期(100敌人) | 增幅 |
+|------|----------------|-----------------|------|
+| PlayerSnap x2 | ~440B | ~460B (+20B无尽字段) | +5% |
+| EnemySnap x100 | ~2400B(30个) | ~8000B(100个) | +233% |
+| BulletSnap x50 | ~3000B | ~5000B | +67% |
+| PickupSnap x30 | ~1200B | ~1800B | +50% |
+| EventSnap x5 | ~250B | ~250B | 0% |
+| 包头+其他 | ~150B | ~200B | +33% |
+| **合计** | **~7.4KB** | **~15.7KB** | **+112%** |
+
+10Hz 快照 = 157KB/s 下行，超出 Drive #11 预算（60KB/s）约 2.6 倍。
+
+**结论：无尽模式100敌人的场景需要带宽优化措施。**
+
+推荐分层策略（按优先级排序）：
+
+| 层级 | 策略 | 预期效果 | 实施阶段 |
+|------|------|---------|---------|
+| L1 | 视野范围裁剪（只同步摄像机视野内+缓冲区的敌人） | 减少 50-70% 敌人同步量 | 联机 MVP |
+| L2 | Delta Compression（只发送变化字段） | 减少 40-60% 总量 | 联机 Phase 2 |
+| L3 | 敌人位置量化为 uint16（0-2400 精度够用） | 减少 30% 位置数据 | 联机 Phase 2 |
+| L4 | 二进制序列化替代 JSON | 减少 50% 总量 | 联机 Phase 3 |
+
+L1 单独实施即可将无尽后期降至 ~50-80KB/s（视野内约 30-50 敌人），回到预算范围内。
+
+### 二、Boss周期序列化：一致性保证
+
+**Boss周期系统结构**：
+
+```js
+// game.js L416-431 -- 无尽Boss周期逻辑
+if (elapsed >= 270 && !bossSpawned)       // 首个Boss: 270s
+  bossCycleIndex = 0;
+else if (bossSpawned && bossKilled)        // 后续Boss
+  nextCycle = floor((elapsed - 270) / 240) // 每周期 240s
+  hpScale = 1.5 ^ nextCycle                // HP指数增长
+  spdScale = 1.1 ^ nextCycle               // 速度指数增长
+```
+
+**序列化接口影响**：
+
+GameSnapshot 需新增 3 个字段：
+
+```typescript
+interface GameSnapshot {
+  // ... 现有字段 ...
+  endless?: boolean;           // 是否无尽模式（仅在true时包含）
+  bossCycleIndex?: number;     // 当前Boss周期（0+）
+  bossKillCount?: number;      // Boss击杀计数（0+）
+}
+```
+
+**服务器端同步策略**：
+
+| 维度 | 分析 |
+|------|------|
+| 确定性 | Boss周期计算是纯算术（`floor(elapsed / interval)`, `pow(scale, cycle)`），无随机因素，服务器端可精确复现 |
+| 缩放因子 | `bossScalePerCycle` 存储在 CFG.ENDLESS 常量中，服务器 import 同一份 config.js 即可获得 |
+| 一致性保证 | 服务器维护 `elapsed` 计时器和 `bossCycleIndex`，客户端从服务器快照同步，不需要本地计算Boss周期 |
+| 快照大小 | 3 个额外字段约 +30B，可忽略 |
+
+**关键决策**：联机时 Boss 周期计算完全由服务器端驱动，客户端从快照获取 `bossCycleIndex` 和 `bossKillCount`，不做本地预测。理由：Boss 生成是低频事件（每240s一次），不值得客户端预测。
+
+### 三、敌群上限动态变化：带宽与服务器性能
+
+**动态上限公式**（game.js L443）：
+
+```js
+maxEnemies = Math.min(
+  70 + floor((elapsed - 270) / 60) * (30 / 5),  // 基础70 + 每60s增长6
+  100                                              // 硬上限100
+);
+```
+
+从 270s 开始增长，约 25 分钟达到上限 100。
+
+**对服务器端的影响**：
+
+| 维度 | 标准(70) | 无尽后期(100) | 评估 |
+|------|---------|-------------|------|
+| 敌人AI计算/帧 | 70个寻敌 | 100个寻敌 | +43%，仍可接受 |
+| 碰撞检测(O(n*m)) | 70敌人 * 2玩家 | 100敌人 * 2玩家 | +43%，空间哈希可优化 |
+| 快照序列化 | ~8000B(100*80B) | 需要 L1/L2 优化 | 上文已分析 |
+| 内存占用 | ~50KB | ~70KB | 可忽略 |
+
+**服务器端 spawner 需求**：
+
+当前 spawner 是纯函数（`getSpawnRate(elapsed, endless)`），服务器端 import 即可使用。但动态上限公式内联在 game.js L443，需提取为独立函数：
+
+```js
+// 建议提取到 spawner.js
+export function getMaxEnemies(elapsed, endless) {
+  if (!endless) return CFG.MAX_ENEMIES; // 70
+  return Math.min(
+    CFG.MAX_ENEMIES + Math.floor((elapsed - 270) / 60) * (CFG.ENDLESS.maxEnemyBonus / 5),
+    CFG.ENDLESS.maxEnemiesCap
+  );
+}
+```
+
+**评估结论**：动态敌群上限不阻塞联机实现，但快照带宽需要视野裁剪优化（L1策略）。服务器端性能影响可控（+43% 敌人数量，空间哈希可缓解）。
+
+### 四、出兵节奏加速：服务器端 spawner 的必要性
+
+**无尽出兵参数**（spawner.js L12-18）：
+
+```js
+// elapsed >= 270s 后
+interval: max(0.25, 0.4 - scale * 0.05),  // 最快 0.25s/批
+count: min(8, 4 + floor(scale)),            // 最多 8 只/批
+types: 全部7种敌人
+```
+
+**对服务器端的影响**：
+
+| 参数 | 标准模式(270s后) | 无尽模式(20min+) | 服务器端挑战 |
+|------|----------------|-----------------|------------|
+| 生成间隔 | 0.4s | 0.25s | 服务器 100ms tick 中每 2-3 tick 触发一次生成 |
+| 每批数量 | 4 | 8 | 单次生成计算量翻倍 |
+| 敌人种类 | 全部 | 全部 | 无额外影响 |
+| 难度缩放 | linear(时间比例) | exponential(bossScale) | 服务器需实现 hpScale/spdScale 指数公式 |
+
+**关键问题：服务器端 spawner 的随机性**
+
+出兵位置使用 `Math.random()`（game.js L453-454），联机时需要确保所有客户端生成相同位置的敌人。有两种方案：
+
+**方案 A：服务器端 spawner（推荐）**
+
+- 服务器运行 getSpawnRate() + 生成逻辑
+- 服务器在快照中包含所有新敌人的完整数据
+- 客户端从快照创建敌人，不运行本地 spawner
+- 优点：完全一致性，客户端无法作弊
+- 缺点：快照需包含新生成的敌人信息（EventSnap.type = 'enemy_spawn'）
+
+**方案 B：共享随机种子**
+
+- 服务器分发随机种子，所有客户端用相同种子运行伪随机
+- 缺点：JS 浮点不确定性可能导致位置偏差，需要定点数运算
+
+**推荐方案 A**。理由：半授权状态同步模型下，敌人生成本就应由服务器端驱动。当前 spawner.js 是纯函数，服务器 import 即可使用，零额外开发成本。
+
+### 五、无时间限制的房间生命周期管理
+
+**核心问题**：标准模式房间生命周期固定（5分钟 -> 结算 -> 销毁）。无尽模式没有时间上限，需要重新设计房间生命周期。
+
+**标准模式房间生命周期**（Drive #11 设计）：
+
+```
+LOBBY -> PLAYING(5min) -> RESULT -> 销毁
+```
+
+**无尽模式需要的扩展**：
+
+```
+LOBBY -> PLAYING(无限) -> RESULT -> 销毁
+                    |
+                    +-- 玩家全部死亡 -> RESULT
+                    +-- 超时保护 -> 强制RESULT
+```
+
+**需要新增的机制**：
+
+| 机制 | 说明 | 优先级 |
+|------|------|--------|
+| 房间最大时长 | 设置硬上限（如60分钟），超时后强制结算 | P0 |
+| 全灭检测 | 所有玩家HP<=0时触发结算（已由 endGame(false) 处理） | P0 |
+| 孤立房间回收 | 最后一个玩家断线后延迟30s销毁房间 | P1 |
+| 存档快照周期 | 每分钟保存一次游戏状态快照（用于断线重连） | P1 |
+| 阶段性里程碑同步 | 每5分钟/每Boss击杀同步一次里程碑状态 | P2 |
+
+**断线重连后状态恢复**：
+
+无尽模式断线重连比标准模式更复杂。标准模式可接受"重连后快进到当前状态"（因为游戏只有5分钟），但无尽模式可能已经运行30分钟+，需要完整的状态恢复。
+
+推荐的断线重连策略：
+
+```typescript
+// 服务器端：定期保存轻量快照（每60s）
+interface EndlessCheckpoint {
+  elapsed: number;          // 游戏时间
+  bossCycleIndex: number;   // Boss周期
+  bossKillCount: number;    // Boss击杀数
+  playerSnap: PlayerSnap;   // 玩家状态
+  enemyCount: number;       // 敌人数量（用于恢复时生成）
+  enemyHpScale: number;     // 当前敌人HP缩放
+  enemySpdScale: number;    // 当前敌人速度缩放
+}
+```
+
+重连时：
+1. 客户端从最近 checkpoint 恢复基础状态
+2. 服务器发送当前完整快照（100个敌人 + 子弹 + 掉落物）
+3. 客户端用 applySnapshot() 完整还原
+4. 预计重连数据量：~15KB（含100敌人的完整快照），在30s重连窗口内可轻松传输
+
+**风险评估**：
+
+| 风险 | 等级 | 影响 | 缓解措施 |
+|------|------|------|---------|
+| 房间资源泄漏 | 中 | 无限运行的服务器内存持续增长 | 60分钟硬上限 + 每60s checkpoint 覆盖写 |
+| 断线重连数据量大 | 中 | 100敌人快照 ~15KB | 30s 窗口足够传输 |
+| 服务器实例长时间运行 | 低 | GC 压力累积 | 60分钟硬上限限制运行时长 |
+| 玩家体验疲劳 | 低 | 无尽模式无结束机制 | 属于策划设计范畴，不阻塞技术实现 |
+
+### 六、存档同步：无尽模式独立记录的服务器端验证
+
+**存档新增字段**（save.js L14-17）：
+
+```typescript
+interface SaveData {
+  // ... 现有字段 ...
+  endlessUnlocked: boolean;       // 无尽模式解锁
+  bestEndlessTime: number;        // 最佳存活时间
+  bestEndlessKills: number;       // 最佳击杀数
+  bestEndlessBossKills: number;   // 最佳Boss击杀数
+}
+```
+
+**联机时的处理策略**：
+
+| 字段 | 联机处理方式 | 理由 |
+|------|------------|------|
+| `endlessUnlocked` | 各客户端独立（localStorage） | 解锁条件是单机成就（击败Boss），与联机无关 |
+| `bestEndlessTime` | 各客户端独立追踪，**可选服务器端验证** | 联机无尽模式的存活时间由服务器确认，客户端上报最佳记录时服务器可验证 |
+| `bestEndlessKills` | 各客户端独立追踪，**可选服务器端验证** | 击杀数由服务器端统计（半授权模型中击杀判定在服务器） |
+| `bestEndlessBossKills` | 各客户端独立追踪，**可选服务器端验证** | Boss击杀是确定事件，服务器端有记录 |
+
+**服务器端验证策略**：
+
+MVP 阶段不做服务器端存档验证（复杂度高、收益低）。理由：
+
+1. 无尽模式是 PvE 协作，非竞技排名，客户端伪造记录只影响自己
+2. 服务器端验证需要持久化存储（Redis/PostgreSQL），增加 MVP 复杂度
+3. 如果未来加入"全球排行榜"，那时再引入服务器端验证
+
+**但需要在联机结算时提供以下数据供客户端写入**：
+
+```typescript
+// 服务器 -> 客户端：game_over 消息扩展
+interface GameOverMessage {
+  // ... 现有字段 ...
+  endless?: {
+    elapsed: number;        // 服务器确认的存活时间
+    kills: number;          // 服务器确认的击杀数
+    bossKills: number;      // 服务器确认的Boss击杀数
+  };
+}
+```
+
+客户端收到后与本地 bestEndless* 对比更新。这与标准模式的 bestScore/bestTime 处理一致。
+
+### 七、对序列化接口规格书的影响汇总
+
+Drive #19 的序列化接口规格书需要更新以下内容：
+
+| 规格书部分 | 更新项 | 说明 |
+|-----------|--------|------|
+| GameSnapshot | 新增 `endless?: boolean` | 可选字段，仅无尽模式 |
+| GameSnapshot | 新增 `bossCycleIndex?: number` | 可选字段，无尽Boss周期 |
+| GameSnapshot | 新增 `bossKillCount?: number` | 可选字段，Boss击杀计数 |
+| PlayerSnap | 无变更 | 无尽模式不新增Player字段 |
+| EnemySnap | 无变更 | Boss缩放体现在maxHp/hp值中 |
+| snapshot() 函数 | 新增3个游戏级字段序列化 | 约3行代码 |
+| 快照大小估算 | 从 ~6KB 更新为 ~7KB(标准) / ~16KB(无尽后期) | 需要L1优化 |
+
+### 八、对网络协议规格书的影响
+
+Drive #11 的网络协议规格书需要更新：
+
+| 协议部分 | 更新项 | 说明 |
+|---------|--------|------|
+| game_start 消息 | 新增 `endless: boolean` | 房间选择无尽模式时通知客户端 |
+| ServerSnapshot | 新增 `endless/bossCycleIndex/bossKillCount` | 与序列化规格书同步 |
+| game_over 消息 | 新增 `endless?: { elapsed, kills, bossKills }` | 无尽结算数据 |
+| 房间数据结构 | 新增 `difficulty: 'endless'` | 无尽模式作为独立难度 |
+| 断线重连 | 新增 checkpoint 机制描述 | 无尽模式专属 |
+| 房间生命周期 | 新增最大时长限制 + 孤立房间回收 | 无尽模式专属 |
+
+### 九、阻塞状态复查（连续第 12 次）
+
+| 后端产出物 | 状态 | 前端依赖 |
+|-----------|------|---------|
+| 联机技术调研报告 | 完成 | 无 |
+| 联机架构设计规格书 | 完成 | 无 |
+| 网络协议详细规格书 | **需更新（无尽模式字段）** | 前端评审 |
+| 联机前置任务清单 | 完成 | 无（已交付前端参考） |
+| 序列化接口规格书 | **需更新（无尽模式3个GameSnap字段 + 带宽估算修正）** | 前端评审 + 实现 |
+| Player 拆分方案 | 设计完成 | 前端评审 + 实现 |
+| 服务器 MVP 原型 | 评估完成 | 依赖上述两项前端实现 |
+
+前端当前版本已完成无尽模式。Player 拆分仍未排入前端迭代计划。
+
+### 十、建议汇总
+
+| 建议 | 优先级 | 阶段 | 说明 |
+|------|--------|------|------|
+| 提取 getMaxEnemies() 到 spawner.js | 低 | 前端重构 | 从 game.js 内联提取为独立函数，服务器端复用 |
+| 视野范围裁剪同步 | 高 | 联机 MVP | 只同步摄像机视野内敌人，减少 50-70% 同步量 |
+| 房间最大时长硬上限 | 高 | 联机 MVP | 无尽模式房间设 60 分钟硬上限 |
+| 无尽模式 checkpoint | 中 | 联机 Phase 2 | 每 60s 保存轻量快照，支持断线重连 |
+| Boss周期计算由服务器驱动 | 中 | 联机 Phase 2 | 客户端从快照获取 bossCycleIndex，不本地计算 |
+| 存档服务器验证 | 低 | 联机 Phase 3 | 仅在加入全球排行榜时实施 |
+
+### 决策记录
+
+- 无尽模式对联机架构的最大影响是**快照带宽翻倍**（70 -> 100敌人），需要视野裁剪（L1策略）作为联机 MVP 的必要优化
+- Boss周期系统（bossCycleIndex + 指数缩放）为纯算术计算，服务器端确定性复现无障碍，序列化仅增加3个GameSnap字段（~30B）
+- 无尽模式的房间生命周期需要新增：60分钟硬上限、孤立房间回收、checkpoint 断线重连机制
+- 存档验证在 MVP 阶段不做，各客户端独立追踪无尽记录；服务器端仅在 game_over 消息中提供确认数据
+- 出兵节奏加速（0.25s/批 x8只）要求服务器端驱动 spawner，客户端从快照获取敌人数据
+- 连续第 12 次阻塞确认。后端设计产出物已完备，等待前端排入 Player 拆分和序列化实现
 
 ---
 

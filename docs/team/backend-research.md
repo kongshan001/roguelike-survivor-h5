@@ -821,3 +821,170 @@ src/
 - [A Systematic Review of Technical Defenses Against Software Cheating (arXiv)](https://arxiv.org/html/2512.21377v1)
 - [How to Secure Online Games in 2025 (Genieee)](https://genieee.com/blogs/securing-online-games/)
 - [Creating an Anti-Cheat in an Online Web Game (StackOverflow)](https://stackoverflow.com/questions/70203830/creating-an-anti-cheat-in-an-online-web-game)
+
+---
+
+## 附录 B: 无尽模式联机适配分析 (Drive #24, 2026-04-06)
+
+### B.1 概述
+
+无尽模式（Endless Mode）是 v1.7.0 前端新增的游戏模式，取消了5分钟时间限制，引入Boss周期生成、动态敌群上限（100个）、出兵节奏持续加速等机制。本节分析无尽模式对联机架构的影响。
+
+### B.2 快照带宽分析
+
+| 场景 | 敌人数 | 快照大小(10Hz) | 下行带宽 | 是否在预算内 |
+|------|--------|--------------|---------|------------|
+| 标准模式(5min) | 30-70 | ~6-7KB | ~60-70KB/s | 是 |
+| 无尽模式(10min) | 70-90 | ~10-14KB | ~100-140KB/s | **超预算** |
+| 无尽模式(20min+) | 100(上限) | ~16KB | ~160KB/s | **严重超预算** |
+
+预算基准：Drive #11 估算下行 50KB/s（移动网络友好）。
+
+### B.3 带宽优化方案：视野范围裁剪
+
+**原理**：只同步玩家摄像机视野范围内（加缓冲区）的实体。
+
+```
+视野范围：屏幕宽高 + 200px 缓冲区（约 800x600 + 200 = 1000x800 逻辑像素）
+地图大小：2400x2400
+
+同步比例 = 视野面积 / 地图面积 = (1000*800) / (2400*2400) = 13.9%
+即：100个敌人中平均只有 ~14 个需要同步
+```
+
+**实际效果估算**：
+
+| 场景 | 同步敌人数 | 快照大小 | 下行带宽 |
+|------|-----------|---------|---------|
+| 无尽后期(100敌人) + 视野裁剪 | ~15-25 | ~4-6KB | ~40-60KB/s |
+
+视野裁剪将无尽后期带宽从 160KB/s 降至 ~50KB/s，回到预算范围内。
+
+**实现要点**：
+
+```typescript
+// 服务器端：视野范围过滤
+function filterByViewport(entities: Entity[], playerPos: Position, viewportW: number, viewportH: number, buffer: number = 200): Entity[] {
+  const halfW = (viewportW / 2) + buffer;
+  const halfH = (viewportH / 2) + buffer;
+  return entities.filter(e =>
+    Math.abs(e.x - playerPos.x) < halfW &&
+    Math.abs(e.y - playerPos.y) < halfH
+  );
+}
+```
+
+注意事项：
+- 多人联机时，服务器对每个客户端发送不同的裁剪后快照（基于各自的玩家位置）
+- Boss 由于体型大且重要，应始终同步（即使不在视野内）
+- 宝石/食物/宝箱等拾取物同样裁剪
+
+### B.4 无尽模式房间生命周期
+
+```
+LOBBY
+  |
+  v
+PLAYING (无尽模式)
+  |
+  +-- 所有玩家死亡 -> RESULT
+  +-- 达到60分钟硬上限 -> 强制RESULT
+  +-- 最后玩家断线 -> 30s倒计时 -> 销毁
+  |
+  +-- 每60s: 保存checkpoint (用于断线重连)
+  v
+RESULT (显示无尽统计: 存活时间/击杀/Boss击杀)
+  |
+  v
+销毁房间
+```
+
+checkpoint 数据结构：
+
+```typescript
+interface EndlessCheckpoint {
+  elapsed: number;          // 服务器时间（秒）
+  bossCycleIndex: number;
+  bossKillCount: number;
+  players: PlayerSnap[];    // 所有玩家快照
+  enemyCount: number;       // 用于恢复参考
+  difficultyScale: {        // 当前难度缩放因子
+    enemyHpMul: number;
+    enemySpdMul: number;
+    bossHpMul: number;
+  };
+  spawnRate: {              // 当前出兵参数
+    interval: number;
+    count: number;
+  };
+}
+```
+
+### B.5 断线重连策略
+
+无尽模式断线重连比标准模式更复杂：
+
+| 阶段 | 标准模式 | 无尽模式 |
+|------|---------|---------|
+| 重连窗口 | 30s | 30s（不变） |
+| 状态恢复 | 最新快照即可 | 需完整快照（100敌人可能很大） |
+| 数据量 | ~7KB | ~15KB |
+| 传输时间 | <1s | <1s（30s窗口内充裕） |
+
+重连流程：
+
+1. 客户端发送 `reconnect` + `roomId` + `playerId`
+2. 服务器验证房间存在且玩家属于该房间
+3. 服务器发送当前完整快照（含所有敌人/子弹/掉落物）
+4. 客户端调用 `applySnapshot()` 完整还原
+5. 恢复正常10Hz增量快照
+
+关键差异：无尽模式的完整快照约15KB，但30s窗口（300KB可传输量）内绰绰有余。
+
+### B.6 服务器端 spawner 驱动
+
+无尽模式的 spawner 需要 100% 由服务器驱动，原因：
+
+1. 敌人数量大（100个），客户端本地生成会导致不同步
+2. 出兵位置使用 Math.random()，需要服务器端统一随机源
+3. 难度缩放公式（指数增长）需服务器端权威计算
+
+服务器端 spawner 实现（复用前端代码）：
+
+```typescript
+// 服务器端 import 前端 spawner.js
+import { getSpawnRate } from '../src/systems/spawner.js';
+
+function serverSpawn(gameState: ServerGameState, dt: number) {
+  const rate = getSpawnRate(gameState.elapsed, gameState.endless);
+  gameState.spawnTimer -= dt;
+  if (gameState.spawnTimer <= 0 && gameState.enemies.length < getMaxEnemies(gameState.elapsed, gameState.endless)) {
+    gameState.spawnTimer = rate.interval * CFG.DIFFICULTY[gameState.difficulty].spawnIntervalMul;
+    // 使用服务器端随机源生成敌人
+    for (let i = 0; i < rate.count; i++) {
+      const enemy = createEnemy(rate.types, gameState);
+      gameState.enemies.push(enemy);
+      gameState.events.push({ type: 'enemy_spawn', enemy: enemyToSnap(enemy) });
+    }
+  }
+}
+```
+
+### B.7 技术选型影响
+
+无尽模式对 Drive #12 确定的技术选型无影响：
+
+| 选型项 | 原决策 | 无尽模式影响 | 结论 |
+|--------|--------|------------|------|
+| 同步模式 | 半授权状态同步 | 无变化 | 维持 |
+| 传输协议 | WebSocket (ws) | 无变化（带宽可通过视野裁剪控制） | 维持 |
+| 序列化 | JSON (MVP) | 无变化（优化后仍可考虑二进制） | 维持 |
+| 服务器框架 | Node.js + ws | 无变化 | 维持 |
+| 部署 | Docker + Fly.io | 需考虑长时间运行容器的内存管理 | 维持，增加60分钟硬上限 |
+
+### B.8 决策记录
+
+- 无尽模式不改变技术栈选型，但要求视野裁剪作为联机 MVP 的必要优化
+- 60分钟房间硬上限是资源管理的关键保障
+- 断线重连使用完整快照而非 checkpoint 差量，因为 15KB 在 30s 窗口内传输无压力
+- 存档验证延后至全球排行榜阶段
