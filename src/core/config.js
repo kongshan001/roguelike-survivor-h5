@@ -273,8 +273,8 @@ export const CFG = {
     shop_max_one:      { name:'专精之路',    icon:'📈',  desc:'将任一商店升级买满3级', type:'flag', reward:60 },
     shop_max_all:      { name:'全面发展',    icon:'🌟',  desc:'将全部6种商店升级买满', type:'flag', reward:300 },
     // === Quest ===
-    quests_half:       { name:'挑战新星',    icon:'🌟',  desc:'完成一半Quest(7个)',    type:'condition', reward:50,
-      check: s => (s.completedQuestsCount || 0) >= 7 },
+    quests_half:       { name:'挑战新星',    icon:'🌟',  desc:'完成一半Quest',        type:'condition', reward:50,
+      check: s => (s.completedQuestsCount || 0) >= Math.ceil(CFG.QUESTS.length / 2) },
     quests_all:        { name:'挑战大师',    icon:'👑',  desc:'完成全部Quest',        type:'condition', reward:150,
       check: s => (s.completedQuestsCount || 0) >= CFG.QUESTS.length },
     // === Hidden ===
