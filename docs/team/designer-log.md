@@ -10,12 +10,180 @@
 |--------|------|------|
 | P1 | ~~第7种被动道具：幸运硬币 + 6个Synergy~~ | **✅ 已完成 Drive #23** |
 | P1 | 无尽模式游戏逻辑（21个实现点，CFG+Quest已就位） | **设计规格完善** 待前端实现 |
-| P2 | ~~v2.1新基础武器：毒雾PoisonMist（DOT区域型，第8种基础武器）~~ | **✅ 设计规格完成 Drive #25** 待前端实现 |
-| P2 | v2.1新敌人x2：护盾型ShieldBearer + 自爆型Exploder | **提案完成** Drive #23 待详细设计 |
-| P2 | v2.2多关卡系统（3个Stage + Stage选择界面 + 专属敌人/Boss） | **提案完成** Drive #23 待详细设计 |
-| P2 | v2.2新Boss x2（暗影骑士 + 炎魔，依赖多关卡系统） | **提案完成** Drive #23 待详细设计 |
-| P3 | v2.3 Secrets/隐藏要素（隐藏角色/武器/Stage） | 待设计 |
+| P2 | ~~v2.1新基础武器：毒雾PoisonMist（DOT叠层区域型，第8种基础武器）~~ | **✅ 设计规格完成 Drive #25** 待前端实现 |
+| P2 | ~~v2.1新敌人x2：护盾型(ShieldBearer) + 自爆型(Exploder)~~ | **✅ 设计规格完成 Drive #26** 待前端实现 |
+| P2 | ~~v2.2多关卡系统（3个Stage + Stage选择界面 + 专属敌人/Boss）~~ | **✅ 设计规格完成 Drive #27** 待前端实现 |
+| P2 | ~~v2.2新Boss x2（暗影骑士 + 炎魔，含在多关卡设计中）~~ | **✅ 设计规格完成 Drive #27** 待前端实现 |
+| P2 | ~~v2.3 Secrets/隐藏要素系统（6个Secret: 隐藏角色/武器皮肤/称号/徽章）~~ | **✅ 设计规格完成 Drive #28** 待前端实现 |
 | P3 | v2.3 Weapon Mastery精通系统（每武器3阶段精通任务） | 待设计 |
+| P3 | v2.4 Pet/伙伴系统（跟随AI+专属技能） | 提案完成 Drive #23 待详细设计 |
+
+---
+
+## 2026-04-06 -- Drive #28: v2.3 Secrets/隐藏要素系统设计
+
+### 状态总览
+
+- 所有 P2 设计规格已完成：毒雾(Drive #25) + 新敌人x2(Drive #26) + 多关卡系统(Drive #27，含2个Stage专属Boss)
+- 无尽模式仍为唯一P1待实现项（设计规格100%完善，21个代码修改点已明确）
+- **本次工作**：将P3的Secrets/隐藏要素系统提升为P2，完成完整设计规格。这是竞品调研中发现的高价值低成本设计 -- Vampire Survivors的Secrets文化是其最强大的社区驱动力之一
+
+### 设计概述
+
+当前游戏没有隐藏内容。3角色、8武器、8进化、21协同、所有Quest和成就都公开可见。10-15局后玩家已见过所有内容，缺乏神秘感和社区讨论催化剂。Secrets系统通过6个隐藏要素创造"发现时刻"，驱动社区协作解谜和社交传播。
+
+6个Secret覆盖4种类型：
+
+| 类型 | 数量 | 代表 | 解锁条件类型 |
+|------|------|------|------------|
+| 隐藏角色变体 | 1 | 暗影法师(Shadow Mage) | 完成 all_evolutions 成就(最难的收集成就) |
+| 武器皮肤 | 1 | 黄金飞刀(Golden Knife) | 单局仅持飞刀击杀200敌人 |
+| 称号 | 2 | 幽灵猎手/速度恶魔 | 单局击杀50幽灵 / 3分钟内击杀Boss |
+| 徽章 | 2 | Boss屠戮者/和平主义者 | 累计击杀5Boss / 前60秒不击杀 |
+
+**核心设计约束**：Secrets是外观+轻微变体，不是数值增强。暗影法师是侧向变体(HP-2, 速度+20, 固定闪电武器)，不是纯上位替代。黄金飞刀纯视觉。称号和徽章纯展示。和平主义者徽章附带"+10秒敌人远离20%"的微小开局加成。
+
+### CFG 数值表汇总
+
+```js
+// ===== CFG.SECRETS 新增 =====
+SECRETS: {
+  shadow_mage: {
+    name: '暗影法师', type: 'character', icon: '🌑',
+    desc: '暗影之力，闪电之源',
+    condition: 'all_evolutions',  // 关联已有成就ID
+    reward: { characterId: 'shadow' },
+    discoverToast: '发现隐藏角色: 暗影法师!'
+  },
+  golden_knife: {
+    name: '黄金飞刀', type: 'weapon_skin', icon: '✨',
+    desc: '黄金飞刀特效',
+    condition: { stat: 'knifeOnlyKills', target: 200 },
+    reward: { weaponSkin: 'knife', skinId: 'golden' },
+    discoverToast: '发现隐藏武器皮肤: 黄金飞刀!'
+  },
+  ghost_hunter: {
+    name: '幽灵猎手', type: 'title', icon: '👻',
+    desc: '幽灵猎手称号',
+    condition: { stat: 'ghostKills', target: 50 },
+    reward: { title: '幽灵猎手', titleColor: '#b0bec5' },
+    discoverToast: '发现隐藏称号: 幽灵猎手!'
+  },
+  speed_demon: {
+    name: '速度恶魔', type: 'title', icon: '🔥',
+    desc: '速度恶魔称号',
+    condition: 'speed_clear',  // 关联已有成就条件
+    reward: { title: '速度恶魔', titleColor: '#ff6e00', animated: true },
+    discoverToast: '发现隐藏称号: 速度恶魔!'
+  },
+  boss_slayer: {
+    name: 'Boss屠戮者', type: 'badge', icon: '💀',
+    desc: 'Boss屠戮者徽章',
+    condition: { saveStat: 'totalBossKills', target: 5 },
+    reward: { badge: 'golden_skull', badgeColor: '#ffd700' },
+    discoverToast: '发现隐藏徽章: Boss屠戮者!'
+  },
+  pacifist: {
+    name: '和平主义者', type: 'badge', icon: '🕊',
+    desc: '和平主义者徽章 + 宁静开局',
+    condition: 'pacifist_1min',  // 关联已有成就条件
+    reward: { badge: 'white_dove', badgeColor: '#ffffff', gameplayBonus: 'peaceful_start' },
+    discoverToast: '发现隐藏徽章: 和平主义者!'
+  },
+}
+
+// ===== CFG.CHARACTERS 新增 =====
+shadow: {
+  name: '暗影法师', icon: '🌑', hp: 6, speed: 180,
+  desc: '暗影之力，闪电之源',
+  startWeapon: 'lightning',
+  secret: true,  // 仅在解锁时可见
+  colors: { body: '#4a148c', detail: '#e040fb', eyes: '#ff1744' }
+}
+
+// ===== Save._default() 新增字段 =====
+secrets: [],            // 已解锁的secret ID数组
+totalBossKills: 0,      // 累计Boss击杀数（跨局）
+
+// ===== gameStats 新增字段（局内追踪） =====
+knifeOnlyKills: 0,      // 仅持飞刀时的击杀数
+ghostKills: 0,          // 本局幽灵击杀数
+```
+
+### Secrets完整规格
+
+| # | 名称 | 类型 | 解锁条件 | 预估局数 | 目标受众 |
+|---|------|------|---------|---------|---------|
+| 1 | 暗影法师 | 角色变体 | 完成 all_evolutions 成就 | 40-60 | 收集完成型玩家 |
+| 2 | 黄金飞刀 | 武器皮肤 | 单局仅飞刀击杀200 | 5-10 | 挑战型玩家 |
+| 3 | 幽灵猎手 | 称号 | 单局击杀50幽灵 | 15-20 | 猎杀型玩家 |
+| 4 | 速度恶魔 | 称号 | 3分钟内击杀Boss | 10-20 | 速通型玩家 |
+| 5 | Boss屠戮者 | 徽章 | 累计击杀5Boss | 3-5 | 普通玩家（最容易） |
+| 6 | 和平主义者 | 徽章+开局加成 | 前60秒不击杀 | 3-5 | 探索型玩家 |
+
+### 平衡分析
+
+| 维度 | 评估 | 说明 |
+|------|------|------|
+| 暗影法师战斗力 | 侧向变体 | HP-2 vs 魔法师, 速度+20, 固定闪电武器(失去选择权). DPS不高于任何现有角色 |
+| 黄金飞刀 | 纯视觉 | 零战斗影响 |
+| 称号x2 | 纯展示 | 零战斗影响 |
+| Boss屠戮者 | 纯展示 | 零战斗影响 |
+| 和平主义者 | +20%生成距离(前10秒) | 仅影响开局10秒的敌人刷新位置, 不影响10秒后的任何内容. 极微小正面效果 |
+| **整体** | **零破坏性** | **所有Secret无显著战斗力提升** |
+
+### 社区驱动预测
+
+| Secret | 社区行为 | 效果 |
+|--------|---------|------|
+| 暗影法师 | "那个紫色角色怎么解锁？" | Wiki/攻略创建 |
+| 黄金飞刀 | "他的飞刀为什么是金色的？" | 社交媒体分享 |
+| 幽灵猎手/速度恶魔 | "有哪些称号？" | 论坛讨论 |
+| Boss屠戮者/和平主义者 | "那个图标是什么意思？" | 直播/视频好奇 |
+| Secrets面板 `???` 显示 | "这些问号是什么？" | **核心驱动力** -- 零提示迫使社区协作 |
+
+### 实现要点清单
+
+| # | 文件 | 修改内容 | 预估行数 |
+|---|------|---------|---------|
+| 1 | config.js | CFG.SECRETS 配置对象 + shadow 角色 | ~30 |
+| 2 | save.js | secrets[] + totalBossKills + checkSecrets() | ~25 |
+| 3 | game.js | knifeOnlyKills/ghostKills 追踪 + 秘密检查调用 | ~20 |
+| 4 | scenes.js | 角色选择暗影法师 + Secrets面板 + 称号显示 | ~30 |
+| 5 | hud.js | 徽章绘制(金色骷髅/白鸽) | ~15 |
+| 6 | spawner.js | 和平主义者: 前10秒+20%生成距离 | ~5 |
+| 7 | registry.js | Knife系武器: 黄金皮肤颜色覆盖 | ~8 |
+| 8 | sfx.js | secret音效(上行神秘和弦) | ~5 |
+| **总计** | **8个文件** | | **~138行** |
+
+### 设计规格输出
+
+完整设计规格写入 `docs/superpowers/specs/2026-04-06-secrets-system-design.md`，包含：
+1. 6个Secret详细规格（类型/条件/奖励/平衡分析/武器交互）
+2. CFG.SECRETS 完整常量表
+3. CFG.CHARACTERS 扩展(shadow角色)
+4. Save扩展(secrets[] + totalBossKills + checkSecrets)
+5. gameStats扩展(knifeOnlyKills + ghostKills)
+6. Secret发现流程(检查时机/金色Toast/SFX/面板UI)
+7. 8文件实现要点清单(~138行)
+8. 平衡分析(零破坏性确认)
+9. 社区驱动预测
+10. 未来扩展方向(v2.4+ Stage关联Secret)
+11. 11条设计决策记录
+
+### 设计决策记录
+
+- 选择Secrets系统作为 Drive #28，原因：(1) 所有P2设计规格(Drive #25-27)均已完成，Secrets是优先级表中唯一未设计的P2/P3事项；(2) 竞品调研发现 VS 的 Secrets 系统是其最强大的社区驱动设计，零开发成本但极大提升社区参与度；(3) 当前游戏在10-15局后缺乏神秘感，Secrets填补"发现感"空白；(4) 实现量极小(~138行)，复用现有Save/成就框架
+- 6个Secret而非更多：VS有30+个Secret但存在"过多导致玩家放弃收集"的问题。6个精心设计的Secret覆盖4种类型，每个都有独特的解锁条件和目标受众，数量适中不会产生"集齐焦虑"
+- 暗影法师要求 all_evolutions 成就作为条件：这是最 grind 的成就（需要跨局收集8种进化），作为"终极完成度"奖励。暗影法师是侧向变体（HP-2/速度+20/固定闪电），不是纯上位，保证"有趣但不必须"
+- 黄金飞刀要求"单局仅持飞刀击杀200"：这鼓励玩家进行自我挑战（knife-only run），是社区常见的挑战玩法官方化。纯视觉奖励避免"必需品"压力
+- 幽灵猎手要求50幽灵单局击杀：幽灵是最独特的敌人（闪烁+瞬移），这个条件要求玩家专门针对幽灵设计Build和策略。无尽模式提供了足够的时间窗口
+- speed_demon 和 pacifist 复用已有成就条件(speed_clear/pacifist_1min)：降低实现复杂度，创造"双重发现"时刻（解锁成就的同时发现Secret）
+- boss_slayer 是最容易解锁的Secret（累计5次Boss击杀）：设计为"第一个Secret"，让休闲玩家也能体验Secret系统，建立系统认知
+- Secrets面板中锁定Secret显示为 `???` 且零提示：这是核心设计决策。VS的Secrets文化建立在"社区协作解谜"上，如果显示提示就变成checklist而失去发现感
+- 金色Toast边框区分于蓝色成就边框：视觉层级区分，让玩家立即识别"这是特别的东西"
+- 不设计新的隐藏武器/隐藏进化：隐藏武器会创造"付费获胜"式的压力（必须解锁才能体验完整Build），与"Secrets不是数值增强"的原则冲突。角色变体、武器皮肤、称号、徽章都是外观/轻量变体
+- 设计规格的11个决策记录详见于 `2026-04-06-secrets-system-design.md` 第10节
 
 ---
 
