@@ -14,13 +14,131 @@
 | P1 | 联机前置任务清单（前端 1 页精简清单） | ✅ Drive #15 已输出 |
 | P1 | 序列化接口规格书（待积累更新：无尽模式 + critDmgBonus/goldDropBonus + 9新协同 + BoomerangSnap + 毒雾poison + 2新敌人 + 4关卡敌人 + 2新Boss + stageId + secrets + skills面板 + Weapon Mastery + Pet/伙伴系统 + Ultimate系统） | ⚠️ Drive #30 评估：Ultimate新增UltimateSnap/UltimateMissileSnap/力场效果，累积更新项增至28项 |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，待前端实现 |
-| P1 | 无尽模式联机适配方案（房间生命周期/状态同步限流/存档验证） | ⚠️ Drive #24 评估完成，关键风险已识别，待联机阶段实施 |
+| P1 | 无尽模式联机适配方案（房间生命周期/状态同步限流/存档验证） | ⚠️ Drive #24 评估完成，Drive #32 确认无尽模式已完全实现，关键风险已识别，待联机阶段实施 |
 | P1 | 多关卡系统联机适配方案（房间stage参数/spawner改造/关卡敌人/Boss序列化） | ⚠️ Drive #27 评估完成，核心改造：spawner增加stage参数 + 房间数据新增stageId |
 | P1 | Weapon Mastery 联机影响预评估（weaponDmgMul持久化同步/服务器端验证） | ⚠️ Drive #28 预评估完成：weaponDmgMul已在Drive #12评估，Mastery是永久乘数，服务器端import同config即可 |
 | P1 | Pet/伙伴系统联机序列化影响评估（Pet跟随AI+投射物+控场+闪电链） | ⚠️ Drive #29 评估完成：新增PetSnap/PetBulletSnap/状态机字段，快照+~300-600B |
 | P1 | Ultimate/终极技能系统联机影响评估（充能同步+释放状态+投射物+力场效果） | ⚠️ Drive #30 评估完成：充能需服务器验证，释放状态需同步，新增UltimateSnap~50-200B/玩家 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | ⏳ 已评估，阻塞于 P1 前端实现 |
 | P2 | Docker 容器化部署方案 | 待评估（低优先级） |
+
+---
+
+## 2026-04-07 -- Drive #32: 无尽模式联机影响评估（实现确认版）
+
+### 1. 状态检查
+
+- **当前版本**: v1.6.5
+- **Drive #31 记录状态**: 完整。序列化累积合并规划（28项分类）、技术选型复查、带宽预算追踪均已记录
+- **前端变更**: Drive #32 前端确认无尽模式(P1)已完全实现（21/21点全部通过代码验证），7项设计储备待排期
+- **阻塞状态**: 连续第 20 次确认，后端设计产出物全部完成，Player 拆分和序列化实现仍在前端排入计划之外
+- **序列化累积更新项**: 28 项（Drive #30 统计），本 Drive 不新增
+
+### 2. 无尽模式联机影响评估
+
+策划在 Drive #32 确认无尽模式已完全实现（21/21点）。后端此前已在 Drive #24 基于设计规格做过联机影响评估。本次基于实际代码验证评估结论的有效性。
+
+#### 2.1 时间无上限 -- 断线重连压力
+
+**已实现机制**: 游戏循环中 `if (!window.game.endless && window.game.elapsed >= CFG.GAME_TIME)` 移除了时间限制。无尽模式无硬上限，理论上可无限运行。
+
+**Drive #24 方案验证**:
+
+| Drive #24 建议 | 实现验证 | 结论 |
+|----------------|---------|------|
+| 房间最大时长硬上限（60分钟） | 代码中无内置上限，纯依赖服务器端限制 | 方案有效，必须在服务器端实现 |
+| checkpoint 每60s保存轻量快照 | 代码中无 checkpoint 机制 | 方案有效，联机 MVP 必须实现 |
+| 孤立房间回收（最后玩家断线后30s销毁） | 代码中无相关机制 | 方案有效，服务器端实现 |
+| 断线重连30s窗口 | 代码中无相关机制 | 方案有效，沿用 Drive #11 设计 |
+
+**结论**: 无尽模式时间无上限使断线重连机制从"可选优化"升级为"联机 MVP 必备功能"。标准模式5分钟内丢失的进度有限，但无尽模式可能运行30分钟以上，30s断线窗口内完整恢复全部状态（100敌人+子弹+掉落物+Boss周期）是联机体验的基本要求。
+
+#### 2.2 动态 maxEnemies -- 带宽压力
+
+**已实现机制**（game.js L452）:
+```js
+const maxEnemies = window.game.endless
+  ? Math.min(CFG.MAX_ENEMIES + Math.floor((elapsed - 270) / 60) * (CFG.ENDLESS.maxEnemyBonus / 5), CFG.ENDLESS.maxEnemiesCap)
+  : CFG.MAX_ENEMIES;
+```
+
+从270s开始增长，公式为 `70 + floor((elapsed-270)/60) * 6`，硬上限100（`CFG.ENDLESS.maxEnemiesCap`）。约25分钟达到上限。
+
+**Drive #24 带宽估算验证**:
+
+| 场景 | Drive #24 估算 | 实际代码验证 | 结论 |
+|------|---------------|-------------|------|
+| 100敌人快照 | ~15.7KB | 公式确认上限100，每个EnemySnap ~80B = 8KB 敌人部分 | 估算有效 |
+| 10Hz = 157KB/s 下行 | 超出预算2.6倍 | 仍超预算 | L1视野裁剪是必要措施 |
+| L1视野裁剪后 | 50-80KB/s | 视野内30-50敌人 = ~3-4KB 敌人部分，总计~50KB/s | 回到预算范围内 |
+
+**结论**: 动态敌群上限确实是无尽模式联机的最大带宽挑战。视野裁剪（L1策略，只同步摄像机视野+缓冲区的敌人）是联机 MVP 的必要优化，不可跳过。
+
+#### 2.3 Boss周期生成 -- 状态同步复杂度
+
+**已实现机制**（game.js L424-439）:
+- 首个Boss: 270s，`bossCycleIndex = 0`
+- 后续Boss: 每240s（`CFG.ENDLESS.bossInterval`），`bossCycleIndex` 递增
+- HP缩放: `1.5 ^ nextCycle`（`CFG.ENDLESS.bossScalePerCycle.hpMul`）
+- 速度缩放: `1.1 ^ nextCycle`（`CFG.ENDLESS.bossScalePerCycle.speedMul`）
+- Boss击杀奖励: gold +50, exp +30, food +5（`CFG.ENDLESS.bossKillReward`）
+
+**Drive #24 方案验证**:
+
+| Drive #24 建议 | 实现验证 | 结论 |
+|----------------|---------|------|
+| GameSnapshot 新增 endless/bossCycleIndex/bossKillCount | 代码中这3个字段都存在于 window.game | 序列化方案有效 |
+| Boss周期由服务器端驱动 | `bossCycleIndex` 基于 elapsed 计算，纯算术 | 服务器端确定性复现无障碍 |
+| Boss缩放参数从 CFG 获取 | `CFG.ENDLESS.bossScalePerCycle` 确认存在 | 服务器端 import 即可 |
+
+**结论**: Boss周期系统完全由服务器端确定性计算驱动，不引入客户端预测需求。3个GameSnapshot字段的序列化方案在Drive #24已规划，实现后直接可用。
+
+#### 2.4 敌人属性递增 -- 数值同步精度
+
+**已实现机制**（spawner.js L12-18 + config.js L286-298）:
+- 每分钟额外HP: +0.1（`CFG.ENDLESS.extraHpPerMin`）
+- 每分钟额外速度: +0.05（`CFG.ENDLESS.extraSpdPerMin`）
+- 生成间隔最低: 0.25s（`CFG.ENDLESS.minSpawnInterval`）
+- 生成缩放系数: `Math.min(mins / 5, 4)`（上限4倍）
+- 每分钟金币加成: +0.5（`CFG.ENDLESS.goldBonusPerMin`）
+
+**数值同步精度评估**:
+
+| 参数 | 增长率 | 30分钟时值 | JSON精度 | 结论 |
+|------|--------|-----------|---------|------|
+| extraHpPerMin | +0.1/min | +3.0x | 1位小数足够 | 无精度损失 |
+| extraSpdPerMin | +0.05/min | +1.5x | 2位小数足够 | 无精度损失 |
+| goldBonusPerMin | +0.5/min | +15.0x | 1位小数足够 | 无精度损失 |
+
+**结论**: 所有数值递增基于 elapsed 时间计算，是纯乘数加成。服务器端与客户端使用相同的 `CFG.ENDLESS` 参数，确定性无问题。不引入新的序列化字段（递增后的HP/速度体现在EnemySnap已有字段中）。
+
+### 3. 综合评估
+
+| 影响维度 | 风险等级 | 需要额外设计 | Drive #24方案有效性 |
+|---------|---------|------------|-------------------|
+| 时间无上限/断线重连 | 中 | 否 | 完全有效，checkpoint从可选升级为必备 |
+| 动态敌群上限/带宽 | 高 | 否 | 完全有效，L1视野裁剪为必要措施 |
+| Boss周期生成 | 低 | 否 | 完全有效，3个字段序列化已规划 |
+| 属性递增/数值同步 | 低 | 否 | 完全有效，纯配置驱动 |
+
+**关键结论**:
+
+1. **Drive #24 的所有评估在实际代码验证后仍然完全有效。** 无尽模式实现与设计规格完全对齐，无意外变更
+2. **最高优先级事项仍是视野裁剪（L1策略）。** 100敌人场景下157KB/s超预算2.6倍，视野裁剪可降至50-80KB/s
+3. **checkpoint断线重连从"Phase 2"升级为"联机 MVP 必备"。** 无尽模式可能运行30分钟以上，30s重连窗口内需要完整状态恢复
+4. **60分钟房间硬上限是必要的服务器端保护。** 代码中无内置时间上限
+5. **无尽模式不引入任何新的序列化字段。** 所有新增状态已在Drive #24规划中
+
+### 变更文件
+
+无代码变更。仅更新 `docs/team/backend-log.md`。
+
+### 决策记录
+
+- 无尽模式实际实现与 Drive #24 的设计评估完全对齐，所有联机影响评估和建议维持不变
+- checkpoint断线重连机制从"Phase 2可选"升级为"联机 MVP必备"，理由：无尽模式时间无上限，断线后丢失的进度远大于标准模式
+- 连续第 20 次阻塞确认。后端设计产出物已完备（28项序列化累积更新已分类归档），等待前端排入 Player 拆分和序列化实现
+- 不新增序列化累积更新项（28项维持不变）。无尽模式的3个GameSnapshot字段已在Drive #24记录
 
 ---
 
