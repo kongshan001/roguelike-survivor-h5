@@ -1,5 +1,6 @@
 // ===== Scene Management =====
 import { isMobile } from './input.js';
+import { hideSkillToggle } from './skill-panel.js';
 
 const ALL_SCENES = ['title-screen', 'char-select', 'diff-select', 'weapon-select', 'upgrade-panel', 'result-screen', 'quest-panel', 'shop-panel', 'achievement-panel'];
 
@@ -9,6 +10,7 @@ export function showScene(id) {
   });
   const show = id === 'weapon-select' || id === 'char-select' || id === 'title-screen' || id === 'result-screen';
   document.getElementById('hud').style.display = show ? 'none' : 'flex';
+  document.getElementById('skill-toggle').style.display = show ? 'none' : 'flex';
   document.getElementById('exp-bar-wrap').style.display = show ? 'none' : 'block';
   document.getElementById('minimap').style.display = show ? 'none' : 'block';
   if (isMobile) {

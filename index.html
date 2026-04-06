@@ -59,6 +59,19 @@ canvas{display:block;position:absolute;top:0;left:0}
 #pause-confirm{display:none;position:absolute;inset:0;align-items:center;justify-content:center;background:rgba(0,0,0,0.8);z-index:26;flex-direction:column;gap:12px}
 #pause-confirm p{color:#fff;font:16px monospace;text-align:center}
 #pause-confirm .btn-row{display:flex;gap:12px}
+#skill-panel{position:absolute;left:4px;top:44px;width:160px;max-height:calc(100vh - 100px);overflow-y:auto;display:none;flex-direction:column;gap:2px;pointer-events:auto;z-index:8;padding:4px 6px;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.1);border-radius:6px;font:10px monospace;color:#ccc;scrollbar-width:none}
+#skill-panel::-webkit-scrollbar{display:none}
+#skill-panel .sk-section{margin-bottom:4px}
+#skill-panel .sk-title{font-size:9px;color:#888;margin-bottom:2px;text-transform:uppercase;letter-spacing:1px}
+#skill-panel .sk-row{display:flex;align-items:center;gap:4px;padding:2px 4px;border-radius:3px;background:rgba(255,255,255,0.04)}
+#skill-panel .sk-row+.sk-row{margin-top:1px}
+#skill-panel .sk-icon{font-size:12px;flex-shrink:0;width:16px;text-align:center}
+#skill-panel .sk-info{flex:1;min-width:0}
+#skill-panel .sk-name{font-size:10px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#skill-panel .sk-detail{font-size:9px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#skill-panel .sk-lvl{font-size:9px;font-weight:bold;flex-shrink:0;padding:1px 4px;border-radius:2px}
+#skill-toggle{position:absolute;left:4px;top:30px;width:28px;height:20px;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.15);border-radius:4px;color:#aaa;font-size:10px;cursor:pointer;z-index:9;pointer-events:auto}
+#skill-toggle:hover{background:rgba(255,255,255,0.12)}
 </style>
 </head>
 <body>
@@ -76,6 +89,8 @@ canvas{display:block;position:absolute;top:0;left:0}
   <canvas id="minimap" width="60" height="60"></canvas>
   <div id="joystick"><div id="joystick-knob"></div></div>
   <div id="dash-btn">DASH</div>
+  <div id="skill-toggle" onclick="toggleSkillPanel()">🎒</div>
+  <div id="skill-panel"></div>
 
   <div id="title-screen">
     <div id="title-stats" style="color:#888;font:12px monospace;margin-bottom:8px;min-height:16px"></div>

@@ -22,6 +22,7 @@ import {
 } from './weapons/registry.js';
 import { drawHUD } from './ui/hud.js';
 import { showQuestPanel, hideQuestPanel } from './ui/quest-panel.js';
+import { updateSkillPanel, showSkillToggle, hideSkillToggle } from './ui/skill-panel.js';
 
 // Endless mode boss spawn helper
 function spawnEndlessBoss(hpScale, spdScale) {
@@ -240,6 +241,7 @@ function beginGame(weaponName) {
   document.getElementById('hud').style.display = 'flex';
   document.getElementById('exp-bar-wrap').style.display = 'block';
   document.getElementById('minimap').style.display = 'block';
+  showSkillToggle();
   if (isMobile) showJoystick(true);
   if (isMobile) showJoystick(true);
 }
@@ -289,6 +291,7 @@ window.updateTitleStats = updateTitleStats;
 function endGame(won) {
   window.game.over = true;
   window.game.won = won;
+  hideSkillToggle();
   pauseMenuEl.style.display = 'none';
   confirmEl.style.display = 'none';
   SFX.play(won ? 'victory' : 'gameover');

@@ -1,5 +1,6 @@
 // ===== Upgrade Panel =====
 import { generateUpgrades } from './upgrade-generate.js';
+import { updateSkillPanel } from './skill-panel.js';
 export { generateUpgrades };
 
 export function showUpgrade(choices, game) {
@@ -7,6 +8,7 @@ export function showUpgrade(choices, game) {
   if (window.autoUpgrade && choices.length > 0) {
     choices[0].apply();
     game.player.checkSynergies();
+    updateSkillPanel();
     return;
   }
 
@@ -29,6 +31,7 @@ export function showUpgrade(choices, game) {
       card.onclick = () => {
         c.apply();
         game.player.checkSynergies();
+        updateSkillPanel();
         panel.style.display = 'none';
         game.paused = false;
       };

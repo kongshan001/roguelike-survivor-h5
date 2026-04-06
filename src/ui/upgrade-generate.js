@@ -3,6 +3,7 @@ import { CFG } from '../core/config.js';
 import { randInt } from '../core/math.js';
 import { WEAPON_CLASSES } from '../weapons/registry.js';
 import { Save } from '../core/save.js';
+import { updateSkillPanel } from './skill-panel.js';
 
 export function generateUpgrades(player) {
   const pool = [];
