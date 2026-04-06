@@ -12,11 +12,368 @@
 | P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | ✅ 设计规格书完成 |
 | P1 | 网络协议详细规格书（消息定义/快照格式/断线重连） | ✅ Drive #11 完成 |
 | P1 | 联机前置任务清单（前端 1 页精简清单） | ✅ Drive #15 已输出 |
-| P1 | 序列化接口规格书（待积累更新：无尽模式 + critDmgBonus/goldDropBonus + 9新协同 + BoomerangSnap + 毒雾poison + 2新敌人） | ⚠️ Drive #26 评估：ShieldBearer/Exploder新增字段影响可控，待前端排入实现时一次性更新规格书 |
+| P1 | 序列化接口规格书（待积累更新：无尽模式 + critDmgBonus/goldDropBonus + 9新协同 + BoomerangSnap + 毒雾poison + 2新敌人 + 4关卡敌人 + 2新Boss + stageId + secrets + skills面板 + Weapon Mastery预评估） | ⚠️ Drive #28 评估：Weapon Mastery对联机无新增影响，累积更新项增至21项 |
 | P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，待前端实现 |
 | P1 | 无尽模式联机适配方案（房间生命周期/状态同步限流/存档验证） | ⚠️ Drive #24 评估完成，关键风险已识别，待联机阶段实施 |
+| P1 | 多关卡系统联机适配方案（房间stage参数/spawner改造/关卡敌人/Boss序列化） | ⚠️ Drive #27 评估完成，核心改造：spawner增加stage参数 + 房间数据新增stageId |
+| P1 | Weapon Mastery 联机影响预评估（weaponDmgMul持久化同步/服务器端验证） | ⚠️ Drive #28 预评估完成：weaponDmgMul已在Drive #12评估，Mastery是永久乘数，服务器端import同config即可 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | ⏳ 已评估，阻塞于 P1 前端实现 |
 | P2 | Docker 容器化部署方案 | 待评估（低优先级） |
+
+---
+
+## 2026-04-06 -- Drive #27: 多关卡系统(v2.2) + Secrets系统(v2.3) + 技能面板(v1.6.2) 对联机架构的影响评估
+
+### 背景
+
+自 Drive #26 以来，项目新增了以下设计和实现变更：
+
+1. **前端 v1.6.2**: 战斗中技能展示面板 (`src/ui/skill-panel.js`)，纯 UI 功能，已实现
+2. **设计规格 v2.2**: 多关卡系统 (Multi-Stage System)，3 个关卡、4 个关卡专属敌人、2 个新 Boss
+3. **设计规格 v2.3**: Secrets/隐藏要素系统，6 个秘密、新存档字段、新 gameStats 字段
+
+涉及文件变更（预计/已实现）：
+
+| 变更项 | 涉及文件 | 具体内容 | 状态 |
+|--------|---------|---------|------|
+| 技能面板 | `src/ui/skill-panel.js` (新增) | 纯 UI，读取 CFG/Player 渲染 | 已实现 |
+| 技能面板集成 | `src/game.js`, `src/ui/scenes.js`, `src/ui/upgrade-panel.js`, `src/ui/upgrade-generate.js` | showSkillToggle/hideSkillToggle/updateSkillPanel 调用 | 已实现 |
+| 多关卡配置 | `src/core/config.js` | CFG.STAGES + 6 个新 ENEMY_TYPES + 4 个新 QUESTS + 3 个新 ACHIEVEMENTS | 设计规格 |
+| 存档扩展(关卡) | `src/core/save.js` | stageUnlocked + stageStats 字段 | 设计规格 |
+| spawner 改造 | `src/systems/spawner.js` | getSpawnRate(elapsed, endless, stage) + getStagePool() | 设计规格 |
+| 4 个新敌人 | `src/entities/enemy.js` | shield_skeleton/exploder_bat/lava_slime/fire_bat | 设计规格 |
+| 2 个新 Boss | `src/entities/enemy.js`, `src/game.js` | shadow_knight/flame_lord (各3阶段) | 设计规格 |
+| 关卡选择 UI | `src/ui/scenes.js`, `index.html` | stage-select 场景 | 设计规格 |
+| Secrets 配置 | `src/core/config.js` | CFG.SECRETS | 设计规格 |
+| 存档扩展(Secrets) | `src/core/save.js` | secrets[] + totalBossKills | 设计规格 |
+| gameStats 扩展 | `src/game.js` | knifeOnlyKills/ghostKills | 设计规格 |
+
+### 一、技能面板对联机架构的影响
+
+**结论：无影响。** `skill-panel.js` 是纯 UI 模块，功能是读取 `CFG` 和 `window.game.player` 的当前状态，渲染 HTML 面板。不新增任何运行时状态字段，不修改游戏逻辑，不引入新的序列化需求。
+
+逐项分析：
+
+| 组件 | 数据来源 | 是否产生新运行时状态 | 联机影响 |
+|------|---------|-------------------|---------|
+| updateSkillPanel() | 读取 p.weapons/p.passives/p.activeSynergies | 否 | 无 |
+| getWeaponDetail(w) | 读取 w 的内部属性（count/radius/dmg等） | 否 | 无 |
+| getPassiveDetail(key, stacks) | 读取 CFG.PASSIVES | 否 | 无 |
+| showSkillToggle()/hideSkillToggle() | DOM 操作 | 否 | 无 |
+
+### 二、多关卡系统对联机架构的影响
+
+#### 2.1 关卡选择与房间系统
+
+多关卡系统引入"关卡"概念：每个游戏会话选定一个关卡（荒原/墓地/火山），不同关卡有不同的敌人池和 Boss。
+
+**对房间数据结构的影响**：
+
+```typescript
+interface RoomData {
+  // ... 现有字段 ...
+  stage: 'wasteland' | 'graveyard' | 'volcano';  // 新增：关卡选择
+  // 关卡解锁状态由各客户端 Save 管理，不在房间数据中
+}
+```
+
+**对网络协议的影响**：
+
+| 消息 | 新增字段 | 说明 |
+|------|---------|------|
+| `game_start` (S->C) | `stage: string` | 告知客户端本局使用的关卡 |
+| `join` (C->S) | 无变更 | 关卡由房主选择，非加入者决定 |
+| `room_info` (S->C) | `stage: string` | 房间列表显示关卡信息 |
+
+**关键决策**：关卡选择是房间创建参数，不是实时同步状态。房主在创建房间时选择关卡，服务器在房间生命周期内固定使用该关卡的敌人池和 Boss。理由：
+
+1. 关卡选择是会话级配置，不是帧级状态
+2. 与 difficulty 处理方式一致（房间参数，非同步字段）
+3. 联机时所有玩家必须在同一关卡
+
+#### 2.2 spawner 改造对服务器端的影响
+
+设计规格要求 `getSpawnRate(elapsed, endless, stage)` 增加 `stage` 参数。这是纯函数签名变更，服务器端 import 更新后的 `spawner.js` 即可获得。
+
+**服务器端 spawner 调用变更**：
+
+```typescript
+// Drive #24 设计（无 stage 参数）
+const rate = getSpawnRate(gameState.elapsed, gameState.endless);
+
+// Drive #27 设计（含 stage 参数）
+const rate = getSpawnRate(gameState.elapsed, gameState.endless, gameState.stage);
+```
+
+影响评估：
+
+| 维度 | 分析 |
+|------|------|
+| 代码改动 | 服务器端 spawner 调用处传入 gameState.stage 即可，1 行改动 |
+| 确定性 | 关卡池是纯配置查找（无随机因素），服务器端确定性复现无障碍 |
+| 新敌人类型 | 4 个新敌人类型由 CFG.ENEMY_TYPES 定义，服务器 import 同一份 config.js |
+| 新 Boss | 2 个新 Boss 的阶段逻辑需要服务器端实现（见下文 2.4） |
+
+#### 2.3 4 个关卡专属敌人的序列化影响
+
+**ShieldSkeleton (护盾骷髅)**：与 Drive #26 的 ShieldBearer 共享盾牌机制，序列化需求相同。
+
+| 字段 | 类型 | 序列化需求 | 理由 |
+|------|------|-----------|------|
+| `shielded` | `boolean` | 需要 | 决定 hurt() 中方向减伤判定 |
+| `shieldArc` | `number` | 不序列化 | 固定属性（60度） |
+| `shieldDmgMul` | `number` | 不序列化 | 固定属性（0.3） |
+
+与 Drive #26 ShieldBearer 的 `EnemySnap.shielded` 字段完全重合，无需新增序列化字段。
+
+**ExploderBat (自爆蝙蝠)**：与 Drive #26 的 Exploder 共享自爆机制，序列化需求类似但更简单（无蓄力阶段，死亡/接近即爆炸）。
+
+| 字段 | 类型 | 序列化需求 | 理由 |
+|------|------|-----------|------|
+| `exploder` | `boolean` | 需要 | 标识自爆型敌人 |
+| `explosionRadius` | `number` | 不序列化 | 固定属性（50px） |
+| `explosionDmg` | `number` | 不序列化 | 固定属性（2） |
+| `explosionTrigger` | `number` | 不序列化 | 固定属性（25px） |
+
+与 Drive #26 Exploder 的 `EnemySnap.exploder` 字段重合。注意 ExploderBat 比 Exploder 简单：无 `_fusing`/`_fuseTimer` 蓄力状态（触发即爆炸），因此不需要那两个序列化字段。
+
+**LavaSlime (熔岩史莱姆)**：引入全新的地面持久化伤害机制。
+
+| 字段 | 类型 | 序列化需求 | 理由 |
+|------|------|-----------|------|
+| `lavaTrail` | `boolean` | 需要 | 标识熔岩轨迹型敌人 |
+| `trailInterval` | `number` | 不序列化 | 固定属性（0.5s） |
+| `trailDuration` | `number` | 不序列化 | 固定属性（4s） |
+| `trailDps` | `number` | 不序列化 | 固定属性（1） |
+| `maxTrails` | `number` | 不序列化 | 固定属性（12） |
+| 运行时 `trails[]` | `{x,y,life}[]` | **需要序列化** | 轨迹点影响玩家受伤判定 |
+
+**关键分析：LavaSlime 的 trails[] 是 Blazerang trails 之后的第二个"持久化地面伤害区域"机制。**
+
+EnemySnap 需新增字段：
+
+```typescript
+interface EnemySnap {
+  // ... 现有字段 ...
+  lavaTrail?: boolean;                  // 可选字段，仅熔岩史莱姆为 true
+  trails?: Array<{x: number; y: number; life: number}>;  // 可选字段，活跃轨迹点
+}
+```
+
+**快照大小影响**：
+- 每个 trail 点约 30B（x/y/life）
+- 最多 12 个 trail 点/敌人 = 360B
+- 场景中同时 2-5 个 LavaSlime = 最多 1800B（~1.8KB）
+- 加上 `lavaTrail` 布尔值 = 额外 8B/敌人
+
+这是 Drive #26 以来第一个可能显著增加快照大小的新机制。但在视野裁剪（Drive #24 L1 策略）下，实际同步的 LavaSlime 约 1-2 个，trail 约 5-10 个 = 150-300B，仍在预算内。
+
+**FireBat (火焰蝙蝠)**：使用已有的 `_burn` 系统。
+
+| 字段 | 类型 | 序列化需求 | 理由 |
+|------|------|-----------|------|
+| `burnOnContact` | `boolean` | 不需要 | 这是敌人攻击玩家的 burn，不是敌人自身的 burn |
+| `burnDps` | `number` | 不序列化 | 固定属性（2） |
+| `burnDur` | `number` | 不序列化 | 固定属性（2.5） |
+
+**关键结论**：FireBat 的 burn 是**施加给玩家**的，不是敌人自身状态。PlayerSnap 中是否已有 player burn 字段？
+
+检查当前 PlayerSnap 规格（Drive #19）：PlayerSnap 不包含 `_burn` 字段。这意味着如果火焰蝙蝠的 burn 机制是 `player._burn = {dps, duration}`，则 **PlayerSnap 需要新增 burn 字段**。
+
+```typescript
+interface PlayerSnap {
+  // ... 现有字段 ...
+  burn?: { dps: number; duration: number };  // 可选字段，玩家被点燃时
+}
+```
+
+但仔细分析：FireBat 的 burn 是"接触时施加给玩家"，这是玩家受伤的一个来源。在半授权模型中，服务器端执行碰撞检测后直接调用 `player.takeDamage()` 或设置 `player._burn`，burn 效果体现在玩家 HP 变化中。
+
+**决策**：FireBat 的 burn 施加由服务器端驱动（碰撞检测 -> 设置 player._burn），客户端从 PlayerSnap 的 HP 变化中可以看到伤害结果。但为了让远程客户端正确渲染 burn 视觉效果（玩家闪烁橙色），PlayerSnap 建议新增 `burn` 可选字段。MVP 阶段可不序列化（burn 是短暂的视觉提示），Phase 2 再添加。
+
+#### 2.4 新 Boss 的序列化影响
+
+**ShadowKnight (暗影骑士)**：
+
+| 阶段 | 新增序列化需求 | 说明 |
+|------|--------------|------|
+| Phase 1: Charge+Slash | 无新增 | 标准 moveToward 行为 |
+| Phase 2: Shield Wall+Summon | `shielded: true`（已有字段）+ EventSnap 新增 "summon" 事件 | 召唤骷髅需通知客户端 |
+| Phase 3: Shadow Dash+Blade Storm | EventSnap 新增 "blade_projectile" 事件（或复用 BulletSnap） | 8方向刀刃投射物 |
+
+**FlameLord (炎魔)**：
+
+| 阶段 | 新增序列化需求 | 说明 |
+|------|--------------|------|
+| Phase 1: Fireball Barrage | BulletSnap 扩展（fireball 子弹类型） | 3个火球投射物 |
+| Phase 2: Lava Pools+Charge | 新增 "lava_pool" EventSnap 或环境快照 | 70px 持续5秒的熔岩池 |
+| Phase 3: Inferno+Ring of Fire | BulletSnap（16方向火焰环） | 与 Phase 1 fireball 同格式 |
+
+**关键新需求：环境危险区域（Lava Pools）**
+
+FlameLord Phase 2 产生的 lava pool 和 LavaSlime 的 trails 都是"地面持续伤害区域"。这引出一个新的同步需求：
+
+```typescript
+interface GameSnapshot {
+  // ... 现有字段 ...
+  hazards?: Array<{    // 新增：环境危险区域
+    x: number;
+    y: number;
+    radius: number;
+    dps: number;
+    life: number;      // 剩余时间（秒）
+    type: string;      // 'lava_pool' | 'lava_trail'
+  }>;
+}
+```
+
+但这增加了快照复杂度。**权衡方案**：
+
+| 方案 | 描述 | 推荐 |
+|------|------|------|
+| A: hazards 数组在 GameSnapshot 中 | 通用化地面危险区域同步 | Phase 2（长期） |
+| B: FlameLord lava pool 由服务器 EventSnap 驱动 | 客户端收到事件后本地创建/渲染 | MVP |
+| C: 不序列化 lava pool | 伤害体现在 PlayerSnap HP 变化中 | MVP 简化版 |
+
+**推荐方案 B**：MVP 阶段，FlameLord 的 lava pool 通过 EventSnap 通知客户端创建（位置、半径、持续时间）。客户端收到后本地渲染和计算接触伤害（半授权模型中伤害由服务器端驱动，客户端渲染仅视觉）。
+
+**EventSnap 扩展**：
+
+```typescript
+type EventSnap = {
+  type: "kill" | "damage" | "heal" | "pickup" | "levelup" |
+        "boss_spawn" | "boss_kill" | "explosion" |       // 已有
+        "summon" | "lava_pool";                           // 新增
+  targetId: string;
+  sourceId?: string;
+  value?: number;
+  x?: number;       // 位置
+  y?: number;
+  radius?: number;  // 范围（summon 的敌人数量 / lava_pool 半径）
+  life?: number;    // 持续时间（lava_pool）
+};
+```
+
+#### 2.5 快照大小更新汇总（多关卡系统）
+
+| 变更项 | 额外大小 | 说明 |
+|--------|---------|------|
+| RoomData.stage | +0B（房间参数，非快照字段） | - |
+| GameSnapshot.stage | +15B | 关卡 ID 字符串（一次性） |
+| EnemySnap.lavaTrail (1-2 个 LavaSlime) | +8-16B | 1 个布尔值/敌人 |
+| EnemySnap.trails (1-2 个 LavaSlime, 5-10 点) | +150-300B | 视野裁剪后 |
+| PlayerSnap.burn (可选, 短暂) | +20B | 仅被点燃时 |
+| EventSnap.summon (低频) | +60-80B/次 | Boss 每 5s 召唤 2 只 |
+| EventSnap.lava_pool (低频) | +80-100B/次 | Boss Phase 2 每 4s |
+| BulletSnap 扩展 (fireball) | +60B x 3 = 180B | FlameLord Phase 1 |
+| BulletSnap (blade 投射物) | +60B x 8 = 480B | ShadowKnight Phase 3 |
+| **合计 (每 tick)** | **+~500-1000B** | 取决于 Boss 阶段 |
+
+总快照大小从 ~6.4-7.9KB（Drive #26 估算）增加到 ~6.9-8.9KB，仍在带宽预算内（60KB/s 下行）。含视野裁剪后更低。
+
+### 三、Secrets 系统对联机架构的影响
+
+**结论：无影响。** Secrets 系统是纯客户端 localStorage + 游戏内统计逻辑，与成就系统性质相同。
+
+逐项分析：
+
+| Secrets 组件 | 数据存储 | 网络传输 | 联机影响 |
+|-------------|---------|---------|---------|
+| Save.secrets[] | localStorage | 无 | 各客户端独立追踪 |
+| Save.totalBossKills | localStorage | 无 | 各客户端独立追踪 |
+| gameStats.knifeOnlyKills | 会话内变量 | 无 | 各客户端独立计算 |
+| gameStats.ghostKills | 会话内变量 | 无 | 各客户端独立计算 |
+| Shadow Mage 角色 | CFG.CHARACTERS | 无 | 角色选择是房间参数，序列化已有 charId |
+| Pacifist 和平开局 | spawner 参数调整 | 无 | 影响本地出兵距离，联机由服务器 spawner 处理 |
+| 黄金飞刀皮肤 | 纯渲染逻辑 | 无 | 无状态变更 |
+
+**Pacifist 和平开局的联机处理**：
+
+设计规格中，pacifist 秘密解锁后"前10秒敌人生成距离+20%"。联机时这个效果需要在服务器端 spawner 中实现：
+
+```typescript
+// 服务器端 spawner：检查玩家是否拥有 pacifist 秘密
+function getMinSpawnDistance(player) {
+  let minDist = CFG.SPAWN_MIN_DISTANCE;
+  if (player.hasSecret && player.hasSecret('pacifist') && gameState.elapsed < 10) {
+    minDist *= 1.2;
+  }
+  return minDist;
+}
+```
+
+但这需要服务器端知道玩家的 secrets 状态。**MVP 阶段不实现**：pacifist 效果微小（仅前10秒），且 secrets 是纯客户端数据，服务器端验证会增加复杂度。Phase 3 再考虑。
+
+**Shadow Mage 角色对联机的影响**：
+
+Shadow Mage 是 `CFG.CHARACTERS.shadow` 配置，HP 6 / Speed 180 / 固定 Lightning 起始武器。序列化时通过 PlayerSnap.charId = 'shadow' 标识。服务器端 import 同一份 config.js 即可获得角色属性。无额外序列化负担。
+
+### 四、spawner 签名变更的向后兼容分析
+
+`getSpawnRate(elapsed, endless, stage)` 新增 `stage` 参数。向后兼容策略：
+
+```typescript
+export function getSpawnRate(elapsed, endless, stage = 'wasteland') {
+  // ...existing logic...
+  const types = getStagePool(elapsed, stage);
+  return { interval, count, types };
+}
+```
+
+使用默认参数 `stage = 'wasteland'`，确保不传 stage 时行为与现有代码一致。服务器端和客户端无需额外适配。
+
+### 五、GameSnapshot 新增 stage 字段
+
+```typescript
+interface GameSnapshot {
+  // ... 现有字段 ...
+  stage?: string;   // 新增：关卡 ID，默认 'wasteland'
+}
+```
+
+stage 字段在游戏开始时确定，不会在游戏中变化。可以只在第一个快照中发送，后续快照省略（增量更新策略）。MVP 阶段简单处理：每个快照都包含（+15B，可忽略）。
+
+### 六、阻塞状态复查（连续第 15 次）
+
+| 后端产出物 | 状态 | 前端依赖 |
+|-----------|------|---------|
+| 联机技术调研报告 | 完成 | 无 |
+| 联机架构设计规格书 | 完成 | 无 |
+| 网络协议详细规格书 | **需更新（stage 参数 + lava_pool/summon 事件 + fireball 子弹 + player burn + hazards 概念）** | 前端评审 |
+| 联机前置任务清单 | 完成 | 无（已交付前端参考） |
+| 序列化接口规格书 | **需更新（多关卡 11 项 + Secrets 0 项 = 11 项累积更新，加上前 9 项共 20 项）** | 前端评审 + 实现 |
+| Player 拆分方案 | 设计完成 | 前端评审 + 实现 |
+| 服务器 MVP 原型 | 评估完成 | 依赖上述两项前端实现 |
+
+前端当前版本 v1.6.2，v2.2 规划包含：多关卡系统（3 关卡 + 4 敌人 + 2 Boss），v2.3 规划包含：Secrets 系统。Player 拆分仍未排入前端迭代计划。
+
+### 七、建议汇总
+
+| 建议 | 优先级 | 阶段 | 说明 |
+|------|--------|------|------|
+| spawner getSpawnRate() 增加 stage 参数（含默认值） | 高 | v2.2 前端实现 | 向后兼容，服务器端零适配成本 |
+| 房间数据结构新增 stage 字段 | 高 | 联机 MVP | 与 difficulty 同类处理 |
+| EnemySnap 新增 lavaTrail + trails 字段 | 中 | v2.2 序列化更新 | LavaSlime 轨迹同步 |
+| EventSnap 新增 "summon" 事件类型 | 中 | 联机 MVP | ShadowKnight Phase 2 召唤骷髅 |
+| EventSnap 新增 "lava_pool" 事件类型 | 中 | 联机 MVP | FlameLord Phase 2 熔岩池 |
+| PlayerSnap 新增 burn 可选字段 | 低 | 联机 Phase 2 | FireBat 点燃效果视觉同步 |
+| GameSnapshot 新增 stage 字段 | 低 | 联机 MVP | 关卡标识，可只在首快照发送 |
+| Pacifist 秘密服务器端验证 | 低 | 联机 Phase 3 | 效果微小，MVP 阶段跳过 |
+| 提取地面危险区域为 hazards 通用接口 | 低 | 联机 Phase 2 | LavaSlime trails + FlameLord pools 统一化 |
+
+### 决策记录
+
+- 多关卡系统引入 `stage` 作为房间级参数（与 difficulty 同类），不是帧级同步状态，对序列化负担最小
+- spawner 增加 stage 参数使用默认值策略（`stage = 'wasteland'`），保持向后兼容
+- 4 个关卡专属敌人中，ShieldSkeleton/ExploderBat 与 Drive #26 的 ShieldBearer/Exploder 共享序列化字段，无新增负担
+- LavaSlime 的 trails[] 是第二个"持久化地面伤害"机制（Blazerang 之后），EnemySnap 需新增 `lavaTrail` + `trails` 字段
+- FireBat 的 burn 施加给玩家，MVP 阶段 PlayerSnap 不新增 burn 字段（HP 变化已体现伤害），Phase 2 添加用于视觉同步
+- 2 个新 Boss（ShadowKnight/FlameLord）的序列化主要通过 EventSnap 新增 "summon" 和 "lava_pool" 事件类型覆盖
+- Secrets 系统对联机架构零影响，与成就系统性质相同（纯客户端 localStorage）
+- Shadow Mage 角色通过已有的 PlayerSnap.charId 标识，服务器端 import config.js 获取属性
+- 快照大小从 ~6.4-7.9KB 增加到 ~6.9-8.9KB（多关卡系统），仍在带宽预算内
+- 序列化规格书累积更新项从 9 项增加到 20 项，维持"累积更新，一次性合并"策略
+- 连续第 15 次阻塞确认。后端设计产出物已完备，等待前端排入 Player 拆分和序列化实现
 
 ---
 
