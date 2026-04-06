@@ -15,8 +15,26 @@
 | P2 | ~~v2.2多关卡系统（3个Stage + Stage选择界面 + 专属敌人/Boss）~~ | **✅ 设计规格完成 Drive #27** 待前端实现 |
 | P2 | ~~v2.2新Boss x2（暗影骑士 + 炎魔，含在多关卡设计中）~~ | **✅ 设计规格完成 Drive #27** 待前端实现 |
 | P2 | ~~v2.3 Secrets/隐藏要素系统（6个Secret: 隐藏角色/武器皮肤/称号/徽章）~~ | **✅ 设计规格完成 Drive #28** 待前端实现 |
-| P3 | v2.3 Weapon Mastery精通系统（每武器3阶段精通任务） | 待设计 |
+| P3 | ~~v2.3 Weapon Mastery精通系统（8武器x3阶精通，Bronze/Silver/Gold）~~ | **✅ 设计规格完成 Drive #29** 待前端实现 |
 | P3 | v2.4 Pet/伙伴系统（跟随AI+专属技能） | 提案完成 Drive #23 待详细设计 |
+
+---
+
+## 2026-04-06 -- Drive #29: v2.3 Weapon Mastery精通系统设计规格
+
+### 成果
+- 完成Weapon Mastery精通系统完整设计规格: `docs/superpowers/specs/2026-04-06-weapon-mastery-design.md`
+- 8种基础武器 x 3阶精通(Bronze/Silver/Gold)
+- 每阶门槛: 50/200/500击杀 + 时间要求 + Gold阶特殊挑战
+- 每阶奖励: +5%/+10%/+15%伤害 + 武器专属perk
+- 跨局累计持久化(Save扩展masteryStats字段)
+- 预估15-30局精通一种武器，避免竞品(DRG: Survivor)的过度刷取问题
+
+### 设计决策
+- 3阶而非更多: 与现有武器3级升级对称，降低理解成本
+- 伤害+专属perk双轨: 伤害提供通用数值反馈，perk提供武器差异化体验
+- Gold阶特殊挑战: 每种武器独特（如飞刀要求单次投掷命中3+敌人），避免纯刷取
+- Save新增masteryStats: `{weaponId: {kills, timeEquipped, specialHits, tier}}` 跨局累计
 
 ---
 
