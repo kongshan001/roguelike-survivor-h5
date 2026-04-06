@@ -2,6 +2,15 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [1.6.4] - 2026-04-06
+
+### QA
+- Drive #28 测试 14/14 通过（全绿，4.5分钟）
+- quests_all 成就硬编码修复验证：发现前端 commit 仅记录日志未修改代码，硬编码值(14)与 CFG.QUESTS.length 一致，当前无功能影响
+- 技术债务记录：quests_all `>= 14` 和 quests_half `>= 7` 应改为动态读取数组长度
+- 连续8个Drive零回归（Drive #20~#28）
+- 全部缺陷已关闭（BUG-001~013 + ENH-001/002）
+
 ## [1.6.3] - 2026-04-06
 
 ### QA

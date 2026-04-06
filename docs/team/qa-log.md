@@ -4,6 +4,77 @@
 
 ---
 
+## 2026-04-06 -- Drive #28: quests_all 成就硬编码修复验证
+
+### 测试结果：14/14 通过（全绿，耗时 4.5 分钟）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 14 PASS | 全部测试通过 | quests_all 硬编码修复验证无回归 |
+
+### 变更范围
+
+本次 Drive 验证前端 commit `eaddf62` 声称的 quests_all 成就阈值修复：
+
+- `src/core/config.js` -- 声称将 quests_all 检查从 `>= 14` 改为 `>= CFG.QUESTS.length`
+- `docs/team/frontend-log.md` -- Drive #28 工作记录
+
+### 验证项
+
+#### 1. E2E 测试全绿 -- 通过
+
+- 14/14 全部通过，耗时 4.5 分钟
+- 与 Drive #27 结果一致，无回归
+
+#### 2. quests_all 成就检查验证 -- 部分通过（见技术债务）
+
+- **config.js 第279行当前代码**：`check: s => (s.completedQuestsCount || 0) >= 14`
+- **前端 commit `eaddf62` 实际变更**：仅修改了 `docs/team/frontend-log.md`，未修改 `src/core/config.js`
+- **frontend-log 声称**：将 `>= 14` 改为 `>= CFG.QUESTS.length` -- 与实际代码不符
+- **当前 CFG.QUESTS.length = 14**，因此 `>= 14` 与 `>= CFG.QUESTS.length` 功能等价
+- **结论**：修复未实际应用到代码，但由于硬编码值恰好匹配数组长度，当前无功能影响
+
+#### 3. CFG.QUESTS 完整性确认 -- 通过
+
+- CFG.QUESTS 数组包含14个任务（config.js 第208-223行）：
+  - 角色2个：warrior_30, ranger_30
+  - 难度2个：hard_survive, hard_boss
+  - 击杀2个：kill_50, kill_100
+  - Boss 1个：kill_boss
+  - 特殊1个：no_damage
+  - 连击2个：combo_20, combo_50
+  - 无尽4个：endless_5min, endless_10min, endless_boss3, endless_kill200
+- 硬编码 `>= 14` 与当前数组长度匹配，无遗漏
+
+#### 4. JS 语法检查 -- 通过
+
+| 文件 | node --check |
+|------|-------------|
+| config.js | OK |
+
+### 技术债务
+
+- **TD-001: quests_all 硬编码未修复**：前端 commit `eaddf62` 在 frontend-log.md 中声称已将 `>= 14` 改为 `>= CFG.QUESTS.length`，但实际未修改 config.js 源文件。当前功能不受影响（14 == 14），但未来新增 Quest 时需记得同步更新该阈值。建议后续前端 Drive 补充修改。
+- **TD-002: quests_half 硬编码同理**：`quests_half` 成就的 `>= 7` 也是硬编码值（14/2=7），同样应改为 `>= Math.ceil(CFG.QUESTS.length / 2)` 以提升维护性。
+
+### 缺陷状态
+
+无新缺陷引入。
+
+### 当前缺陷汇总（全部已关闭）
+
+| ID | 严重度 | 状态 | 说明 |
+|----|--------|------|------|
+| BUG-001~013 + ENH-001/002 | 各级 | 全部已修复 | 15个缺陷全部关闭 |
+
+### 决策记录
+
+- 14/14 全绿，连续8个Drive零回归（Drive #20~#28）
+- 前端声称修复 quests_all 硬编码但实际未修改代码，记录为技术债务（当前无功能影响）
+- 版本号从 v1.6.3 不递增（无实际功能变更，仅前端日志记录与代码不一致的问题记录）
+
+---
+
 ## 2026-04-06 — Drive #27: skill-panel.js 集成验证
 
 ### 测试结果：14/14 通过（全绿，耗时 4.7 分钟）
