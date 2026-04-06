@@ -16,8 +16,79 @@
 | P2 | ~~v2.3 Secrets/隐藏要素系统（6个Secret: 隐藏角色/武器皮肤/称号/徽章）~~ | **✅ 设计规格完成 Drive #28** 待前端实现 |
 | P3 | ~~v2.3 Weapon Mastery精通系统（8武器x3阶精通，Bronze/Silver/Gold）~~ | **✅ 设计规格完成 Drive #29** 待前端实现 |
 | P3 | ~~v2.4 Pet/伙伴系统（3种Pet x 3级，跟随AI+专属攻击）~~ | **✅ 设计规格完成 Drive #29** 待前端实现 |
+| P3 | ~~v2.5 Ultimate/终极技能系统（4角色专属大招，充能释放机制）~~ | **✅ 设计规格完成 Drive #30** 待前端实现 |
 
-**设计储备状态**：所有 P0/P1/P2/P3 设计规格均已完成。当前唯一待前端实现的设计储备：无尽模式(P1)、毒雾(P2)、新敌人x2(P2)、多关卡系统(P2)、Secrets(P2)、Weapon Mastery(P3)、Pet系统(P3)。如需新设计方向，需从竞品调研 P3 长期规划中选取（主动技能系统/Deck-building元素/装备词缀等）。
+**设计储备状态**：所有 P0/P1/P2/P3 设计规格均已完成（含新方向Ultimate系统）。当前待前端实现的设计储备：无尽模式(P1)、毒雾(P2)、新敌人x2(P2)、多关卡系统(P2)、Secrets(P2)、Weapon Mastery(P3)、Pet系统(P3)、Ultimate系统(P3)。如需新设计方向，需从竞品调研 P3 长期规划中选取（Deck-building元素/装备词缀/Prestige重置等）。
+
+---
+
+## 2026-04-06 -- Drive #30: v2.5 Ultimate/终极技能系统设计规格
+
+### 状态总览
+
+- 所有 P0/P1/P2/P3 设计规格均已完成，前端实现排期中
+- Drive #29 完成了 Weapon Mastery + Pet/伙伴系统设计规格
+- **本次工作**：设计 Ultimate/终极技能系统 — 每角色独有的充能型大招，填补"手动释放大招"的操控空白。这是竞品 Soulstone Survivors 验证过的高价值系统
+- **至此，所有设计方向（P0-P3+新方向）均有完整设计规格**
+
+### 成果
+
+- 完成 Ultimate/终极技能系统完整设计规格: `docs/superpowers/specs/2026-04-06-ultimate-system-design.md`
+- 3种角色 Ultimate + 1种隐藏角色 Ultimate:
+  - 魔法师: 奥术轰炸(Arcane Barrage) — 10波x4导弹从天而降，大范围清场
+  - 战士: 狂暴战意(Berserker Rage) — 5秒x2伤害+x1.5攻速+无敌，Boss爆发
+  - 游侠: 箭雨风暴(Arrow Storm) — 360度42支箭矢扩散，突围
+  - 暗影法师: 暗影裂隙(Shadow Rift) — 250px吸引+减速+DPS，AOE收割准备
+- 充能机制：击杀普通+1.5%/精英+5%/Boss+12%/受伤+1%，每局~2次释放
+- Q键(PC)/ULT按钮(移动端)释放，自动瞄准，不占升级槽
+- 2个新成就 + 1个新Quest，8个文件修改点，预估~225行
+
+### CFG 数值表汇总
+
+```js
+// ===== CFG.ULTIMATE 新增 =====
+ULTIMATE: {
+  chargePerKill: 1.5, chargePerEliteKill: 5, chargePerBossKill: 12,
+  chargeOnDamageTaken: 1, maxCharge: 100,
+  activationKey: 'KeyQ', buttonSize: 48,
+  buttonColor: '#ffd700', buttonChargingColor: '#555',
+  mage: {
+    name:'奥术轰炸', duration:4, waveInterval:0.4, missilesPerWave:4,
+    missileDamage:10, splashRadius:25, splashDamageMul:0.5, missileSpeed:600,
+    color:'#e040fb'
+  },
+  warrior: {
+    name:'狂暴战意', duration:5, dmgMul:2.0, attackSpeedMul:1.5,
+    immune:true, speedMul:1.3, color:'#ff1744'
+  },
+  ranger: {
+    name:'箭雨风暴', duration:3.5, arrowsPerSecond:12, arrowDamage:5,
+    arrowPierce:2, expansionSpeed:120, maxRadius:200, color:'#69f0ae'
+  },
+  shadow: {
+    name:'暗影裂隙', duration:4, pullRadius:250, pullSpeed:60,
+    dps:6, slowInArea:0.4, color:'#7c4dff'
+  },
+}
+```
+
+### 平衡分析
+
+| Ultimate | 持续 | 等效DPS | 对比基础(x) | 定位 |
+|----------|------|---------|------------|------|
+| 奥术轰炸 | 4s | ~100 | x5 | 清场 |
+| 狂暴战意 | 5s | ~60 | x3 | Boss爆发 |
+| 箭雨风暴 | 3.5s | ~60-90 | x3-4.5 | 突围 |
+| 暗影裂隙 | 4s | ~120-600 | x6-30(高密度) | 控场聚拢 |
+
+### 设计决策
+
+- 充能制(非冷却制)：击杀=充能，创造"越战越强"正反馈，5分钟短局~2次释放
+- 自动瞄准(非手动)：移动端零额外负担，与DASH并列的"单按钮体验"
+- 受伤+1%充能："受挫补偿"设计，困难局面也能积攒希望
+- Ultimate不跨局保留：5分钟短局应自包含
+- 不占升级槽：角色固有技能，不干扰Build构建自由度
+- weaponDmgMul联动：商店武器精通也提升Ultimate伤害
 
 ---
 
