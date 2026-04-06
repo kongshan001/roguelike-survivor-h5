@@ -4,6 +4,75 @@
 
 ---
 
+## 2026-04-06 -- Drive #29: quests_half/quests_all 成就硬编码修复验证
+
+### 测试结果：14/14 通过（13 passed + 1 flaky retry，耗时 5.9 分钟）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 13 PASS | 首次通过 | 成就硬编码修复无回归 |
+| 1 FLAKY | 5分钟内至少升到Lv3 | 首次失败(level=2)，retry通过(level>=3)，历史已知flaky |
+
+### 变更范围
+
+本次 Drive 验证前端对 quests_half 和 quests_all 成就检查的硬编码修复：
+
+- `src/core/config.js` -- quests_half 和 quests_all 的 check 函数从硬编码改为动态读取数组长度
+
+### 验证项
+
+#### 1. E2E 测试全绿 -- 通过
+
+- 14/14 全部通过（含1次retry），耗时 5.9 分钟
+- 与 Drive #28 结果一致，无回归
+
+#### 2. quests_half 成就检查验证 -- 通过
+
+- **修复前**：`check: s => (s.completedQuestsCount || 0) >= 7`（硬编码 7）
+- **修复后（config.js 第277行）**：`check: s => (s.completedQuestsCount || 0) >= Math.ceil(CFG.QUESTS.length / 2)`
+- **Math.ceil(14 / 2) = 7**，当前功能等价但具备前瞻性：未来新增 Quest 时无需手动更新阈值
+- 使用 `Math.ceil` 而非 `Math.floor` 确保奇数个 Quest 时阈值向上取整（如15个Quest需完成8个）
+
+#### 3. quests_all 成就检查验证 -- 通过
+
+- **修复前**：`check: s => (s.completedQuestsCount || 0) >= 14`（硬编码 14）
+- **修复后（config.js 第279行）**：`check: s => (s.completedQuestsCount || 0) >= CFG.QUESTS.length`
+- **CFG.QUESTS.length = 14**，当前功能等价，未来新增 Quest 时自动适配
+
+#### 4. CFG.QUESTS 完整性确认 -- 通过
+
+- CFG.QUESTS 数组包含14个任务（config.js 第208-223行），与 Drive #28 一致
+- 10个标准任务 + 4个无尽模式任务
+
+#### 5. JS 语法检查 -- 通过
+
+| 文件 | node --check |
+|------|-------------|
+| config.js | OK |
+
+### 技术债务关闭
+
+- **TD-001（Drive #28）: quests_all 硬编码未修复** -- 已关闭。config.js 第279行已改为 `>= CFG.QUESTS.length`
+- **TD-002（Drive #28）: quests_half 硬编码同理** -- 已关闭。config.js 第277行已改为 `>= Math.ceil(CFG.QUESTS.length / 2)`
+
+### 缺陷状态
+
+无新缺陷引入。
+
+### 当前缺陷汇总（全部已关闭）
+
+| ID | 严重度 | 状态 | 说明 |
+|----|--------|------|------|
+| BUG-001~013 + ENH-001/002 | 各级 | 全部已修复 | 15个缺陷全部关闭 |
+
+### 决策记录
+
+- 14/14 全绿，连续9个Drive零回归（Drive #20~#29）
+- Drive #28 发现的两项技术债务（TD-001/TD-002）全部关闭
+- 版本号从 v1.6.4 递增至 v1.6.5（quests_half/quests_all 成就硬编码修复验证）
+
+---
+
 ## 2026-04-06 -- Drive #28: quests_all 成就硬编码修复验证
 
 ### 测试结果：14/14 通过（全绿，耗时 4.5 分钟）
