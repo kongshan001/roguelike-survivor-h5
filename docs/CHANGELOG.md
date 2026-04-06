@@ -2,6 +2,16 @@
 
 All notable changes to 肉鸽幸存者 (Roguelike Survivor) will be documented in this file.
 
+## [1.6.3] - 2026-04-06
+
+### QA
+- Drive #27 测试 14/14 通过（全绿，4.7分钟）
+- skill-panel.js 存在且被正确集成到 game.js/scenes.js/upgrade-generate.js/upgrade-panel.js
+- 技能面板渲染逻辑覆盖全部15种武器+7种被动+职业被动+协同效果
+- 5个相关文件 JS 语法检查全部通过
+- 连续7个Drive零回归（Drive #20~#27）
+- 全部缺陷已关闭（BUG-001~013 + ENH-001/002）
+
 ## [1.6.2] - 2026-04-06
 
 ### QA

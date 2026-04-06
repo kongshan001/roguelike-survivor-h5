@@ -4,6 +4,102 @@
 
 ---
 
+## 2026-04-06 — Drive #27: skill-panel.js 集成验证
+
+### 测试结果：14/14 通过（全绿，耗时 4.7 分钟）
+
+| 结果 | 用例 | 备注 |
+|------|------|------|
+| 14 PASS | 全部测试通过 | skill-panel 集成无回归 |
+
+### 变更范围
+
+本次 Drive 验证 skill-panel.js 模块的存在及集成：
+
+- `src/ui/skill-panel.js` -- 技能面板模块（164行），导出 toggleSkillPanel/hideSkillPanel/showSkillToggle/hideSkillToggle/updateSkillPanel
+- `src/game.js` -- import { updateSkillPanel, showSkillToggle, hideSkillToggle } 并在 beginGame/endGame 调用
+- `src/ui/scenes.js` -- import { hideSkillToggle } 用于场景切换时隐藏
+- `src/ui/upgrade-generate.js` -- import { updateSkillPanel } 升级后刷新面板
+- `src/ui/upgrade-panel.js` -- import { updateSkillPanel } 升级面板操作后刷新
+- `index.html` -- #skill-toggle 按钮 + #skill-panel 容器 + CSS 样式
+
+### 验证项
+
+#### 1. skill-panel.js 文件存在且结构完整 -- 通过
+
+- **文件路径**：`src/ui/skill-panel.js`（164行）
+- **导入依赖**：`CFG` from `../core/config.js` -- 确认
+- **导出函数**：
+  - `toggleSkillPanel()` -- 切换面板显示/隐藏，显示时调用 updateSkillPanel() -- 确认
+  - `hideSkillPanel()` -- 隐藏面板 -- 确认
+  - `showSkillToggle()` -- 显示切换按钮 -- 确认
+  - `hideSkillToggle()` -- 隐藏切换按钮并隐藏面板 -- 确认
+  - `updateSkillPanel()` -- 渲染面板内容 -- 确认
+- **全局暴露**：`window.toggleSkillPanel = toggleSkillPanel` -- 确认（供 HTML onclick 调用）
+
+#### 2. game.js 集成 -- 通过
+
+- **import**（第25行）：`import { updateSkillPanel, showSkillToggle, hideSkillToggle } from './ui/skill-panel.js'` -- 确认
+- **beginGame**（第244行）：调用 `showSkillToggle()` 显示技能按钮 -- 确认
+- **endGame**（第294行）：调用 `hideSkillToggle()` 隐藏技能按钮和面板 -- 确认
+
+#### 3. scenes.js 集成 -- 通过
+
+- **import**（第3行）：`import { hideSkillToggle } from './skill-panel.js'` -- 确认
+- **场景切换**（第13行）：`skill-toggle` 元素在场景显示时根据 `show` 参数控制显隐 -- 确认
+
+#### 4. upgrade-generate.js / upgrade-panel.js 集成 -- 通过
+
+- **upgrade-generate.js**（第6行）：`import { updateSkillPanel } from './skill-panel.js'` -- 确认
+- **upgrade-panel.js**（第3行）：`import { updateSkillPanel } from './skill-panel.js'` -- 确认
+- 升级后调用 `updateSkillPanel()` 刷新面板内容 -- 确认
+
+#### 5. index.html 集成 -- 通过
+
+- **#skill-toggle 按钮**（第92行）：`onclick="toggleSkillPanel()"`, icon "🎒" -- 确认
+- **#skill-panel 容器**（第93行）：空 div，内容由 JS 动态渲染 -- 确认
+- **CSS 样式**（第62-72行）：完整定义，含面板容器/滚动条/分区/行/图标/名称/详情/等级样式 -- 确认
+- **#skill-toggle CSS**（第73-74行）：28x20px 按钮，z-index:9，hover 效果 -- 确认
+
+#### 6. 面板内容渲染逻辑 -- 通过
+
+- **武器区**：遍历 `player.weapons`，显示 icon/name/detail/level，进化武器标 MAX 且橙色等级色 -- 确认
+- **被动区**：遍历 `player.passives`（stack>0），显示 icon/name/detail/xN 满叠绿色 -- 确认
+- **职业区**：读取 `CFG.CHARACTERS[charId].classPassive`，显示固有技能紫色等级标签 -- 确认
+- **协同区**：遍历 `player.activeSynergies`，显示 icon/name/desc -- 确认
+- **空状态**：显示"暂无技能"提示 -- 确认
+- **武器详情函数 getWeaponDetail()**：覆盖全部15种武器（7基础+8进化），含 try-catch 容错 -- 确认
+- **被动详情函数 getPassiveDetail()**：覆盖全部7种被动，显示叠层相关数值 -- 确认
+
+#### 7. JS 语法检查（5个文件全部通过）
+
+| 文件 | node --check |
+|------|-------------|
+| skill-panel.js | OK |
+| game.js | OK |
+| scenes.js | OK |
+| upgrade-generate.js | OK |
+| upgrade-panel.js | OK |
+
+### 缺陷状态
+
+无新缺陷引入。
+
+### 当前缺陷汇总（全部已关闭）
+
+| ID | 严重度 | 状态 | 说明 |
+|----|--------|------|------|
+| BUG-001~013 + ENH-001/002 | 各级 | 全部已修复 | 15个缺陷全部关闭 |
+
+### 决策记录
+
+- 14/14 全绿，连续7个Drive零回归（Drive #20~#27）
+- skill-panel.js 集成完整：5个文件正确 import/调用，HTML 元素和 CSS 样式完备
+- 面板渲染逻辑覆盖全部武器（15种）和被动（7种），含职业被动和协同显示
+- 版本号从 v1.6.2 递增至 v1.6.3（新增 skill-panel UI 功能验证）
+
+---
+
 ## 2026-04-06 — Drive #26: 前端状态巡检验证 + BUG-010确认
 
 ### 测试结果：14/14 通过（全绿，耗时 4.6 分钟）
