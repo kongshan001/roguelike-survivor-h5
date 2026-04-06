@@ -22,6 +22,224 @@
 
 ---
 
+## 2026-04-06 -- Drive #28: Weapon Mastery 精通系统对联机序列化的影响预评估
+
+### 背景
+
+策划 Drive #29 完成了 v2.3 Weapon Mastery 精通系统设计规格书（`docs/superpowers/specs/2026-04-06-weapon-mastery-design.md`），核心内容：
+
+1. **跨局持久化进度**：8 种基础武器各有 3 阶精通（Bronze/Silver/Gold），基于 kills + timeEquipped + specialHits 累计
+2. **永久伤害加成**：每阶 +5%/+10%/+15%，与商店 weaponDmg 乘法叠加
+3. **每武器专属 perk**：Silver/Gold 阶解锁武器特有加成（如 Knife pierce+1, Lightning +2 chains 等）
+4. **Save 扩展**：新增 `weaponMastery: { [weaponId]: { kills, time, tier, specials } }`
+5. **伤害公式变更**：`base * weaponDmgMul * (1 + masteryDmgBonus)`
+
+当前版本 v1.6.2，Weapon Mastery 设计规格已完成，尚未实现，属于 v2.3 规划。
+
+涉及文件变更（预计）：
+
+| 变更项 | 涉及文件 | 具体内容 |
+|--------|---------|---------|
+| CFG.WEAPON_MASTERY 常量块 | `src/core/config.js` | 8 武器 x 3 阶配置（kills/time/dmgBonus/perk/special） |
+| CFG.ACHIEVEMENTS 新增 3 条 | `src/core/config.js` | mastery_first / mastery_gold / mastery_all |
+| Save.weaponMastery 新字段 | `src/core/save.js` | _default() + migration + checkMasteryTier() + updateMastery() + getMasteryBonus() |
+| game.js sessionMastery 跟踪 | `src/game.js` | 每帧 dt 累计 + 击杀归属 + endGame() 合并 |
+| Weapon.applyDmg() 扩展 | `src/weapons/registry.js` | `base * weaponDmgMul * (1 + mastery.dmgBonus)` |
+| Per-weapon special 追踪 | `src/weapons/registry.js` | returnHits / burnKills / freezeKills 等计数 |
+| Mastery Tab UI | `src/ui/skill-panel.js` | 精通面板标签页 |
+| Mastery toast | `src/ui/scenes.js` | 阶段提升提示 |
+
+### 一、Save.weaponMastery 对联机序列化的影响
+
+**结论：无影响。** `weaponMastery` 是跨局持久化数据，存储在 localStorage，与 `shopUpgrades`、`completedAchievements`、`secrets` 性质完全相同。
+
+逐项分析：
+
+| Weapon Mastery 组件 | 数据存储 | 网络传输 | 联机影响 |
+|---------------------|---------|---------|---------|
+| `Save.weaponMastery[weaponId].kills` | localStorage | 无 | 各客户端独立累计 |
+| `Save.weaponMastery[weaponId].time` | localStorage | 无 | 各客户端独立累计 |
+| `Save.weaponMastery[weaponId].tier` | localStorage | 无 | 各客户端独立计算 |
+| `Save.weaponMastery[weaponId].specials` | localStorage | 无 | 各客户端独立累计 |
+| `game.sessionMastery` (运行时) | 内存（会话变量） | 无 | 各客户端独立追踪 |
+| mastery 成就（mastery_first 等） | localStorage | 无 | 各客户端独立触发 |
+
+### 二、masteryDmgBonus 对 PlayerSnap 序列化的影响
+
+**结论：无新增序列化字段。**
+
+Weapon Mastery 的伤害加成通过 `Weapon.applyDmg()` 方法应用：
+
+```js
+// 设计规格定义的 applyDmg()
+applyDmg(base) {
+  const shopMul = (window.game && window.game.weaponDmgMul) || 1;
+  const mastery = this.masteryBonus || { dmgBonus: 0 };
+  return base * shopMul * (1 + mastery.dmgBonus);
+}
+```
+
+分析：
+
+| 维度 | 分析 |
+|------|------|
+| `weaponDmgMul` | 已在 Drive #12 评估，存储在 `game.weaponDmgMul`（商店升级），在 beginGame() 时从 Save 加载。联机时服务器端 import 同一份 config.js 即可获得 |
+| `mastery.dmgBonus` | 等价于另一个永久乘数。在 beginGame() 时从 Save.weaponMastery 计算得出，是静态会话数据。服务器端在游戏开始时从客户端 Save 数据（或联机后从服务器持久化存储）读取即可 |
+| 是否需要新增 PlayerSnap 字段 | 否 -- mastery 加成已体现在 EnemySnap.hp 的变化中（伤害计算结果），不需要额外传输 |
+| 是否需要新增 WeaponSnap 字段 | 否 -- `Weapon.masteryBonus` 是武器实例的内部属性，不影响 WeaponSnap 格式 `{ name, level, timer }` |
+
+**关键对比：masteryDmgBonus 与 weaponDmgMul 的结构等价性**
+
+| 特征 | weaponDmgMul (商店) | masteryDmgBonus (精通) |
+|------|---------------------|----------------------|
+| 来源 | Save.shopUpgrades | Save.weaponMastery |
+| 作用范围 | 全局（所有武器） | 单武器 |
+| 计算时机 | beginGame() | beginGame() |
+| 是否动态变化 | 否（局内固定） | 否（局内固定） |
+| 服务器端获取方式 | import config.js + 从房间数据读 | import config.js + 从玩家存档读 |
+| 序列化需求 | 无（Drive #12 结论） | 无（本次结论） |
+
+两者在联机架构中处理方式完全一致：都是局内固定的永久乘数，服务器端在游戏开始时获取一次即可。
+
+### 三、per-weapon perks 对服务器端逻辑的影响
+
+Silver/Gold 阶的武器专属 perks 不新增序列化字段，但影响服务器端武器逻辑。
+
+| 武器 | Silver Perk | Gold Perk | 服务器端复现复杂度 |
+|------|------------|-----------|-------------------|
+| HolyWater | orbSpeedMul: 1.08 | extraOrb: 1 | 低 -- 修改旋转速度 + 增加球体数 |
+| Knife | projSpeedMul: 1.10 | pierceBonus: 1 | 低 -- 修改子弹速度 + 穿透数 |
+| Lightning | extraChains: 1 | extraChains: 2 | 低 -- 修改链式跳数 |
+| Bible | radiusMul: 1.10 | radiusMul: 1.15 | 低 -- 修改碰撞半径 |
+| FireStaff | burnDurBonus: 0.5s | burnDurBonus: 1.0s | 低 -- 修改 DOT 持续时间 |
+| FrostAura | freezeBonus: 0.03 | freezeBonus: 0.05 | 低 -- 修改冻结概率 |
+| Boomerang | trackAngleMul: 1.15 | trackAngleMul: 1.25 | 低 -- 修改追踪角度 |
+| PoisonMist | maxStackBonus: 1 | maxStackBonus: 2 | 低 -- 修改最大叠层 |
+
+**全部 perks 都是数值参数修改**，存储在 `CFG.WEAPON_MASTERY.weapons[weaponId].tiers[i].perk` 中。服务器端 import 同一份 config.js，在创建武器实例时应用 perk 参数即可。无新增逻辑复杂度。
+
+### 四、伤害公式变更对现有规格的影响
+
+当前伤害链路（Drive #12 定义）：
+
+```
+baseDmg -> Weapon.applyDmg(base) -> e.hurt(dmg, isCrit)
+```
+
+Weapon Mastery 扩展后：
+
+```
+baseDmg -> Weapon.applyDmg(base) -> e.hurt(dmg, isCrit)
+               |
+               + base * weaponDmgMul * (1 + masteryDmgBonus)
+```
+
+**对 EnemySnap 的影响**：无。伤害计算结果体现在 EnemySnap.hp 变化中。
+
+**对 BulletSnap 的影响**：无。BulletSnap.dmg 记录的是子弹创建时的基础伤害值（或已应用加成后的值），格式不变。
+
+**对 hurt() 方法签名的影响**：无变更。mastery 加成在 applyDmg() 中完成，hurt() 接收的 dmg 参数已经包含了所有乘数。
+
+### 五、sessionMastery 跟踪对联机的影响
+
+设计规格要求 game.js 在每帧执行：
+
+```js
+for (const w of player.weapons) {
+  if (w.name && !w.evolved) {
+    sessionMastery[w.name].time += dt;
+  }
+}
+```
+
+以及在击杀时：
+
+```js
+sessionMastery[baseName].kills++;
+```
+
+**联机处理**：
+
+| 数据 | 单机 | 联机 |
+|------|------|------|
+| sessionMastery[weapon].time | 每帧 dt 累加 | 各客户端独立累计（武器持有时间由服务器快照中的 WeaponSnap 存在性决定） |
+| sessionMastery[weapon].kills | 击杀时累加 | 各客户端独立累计（击杀归属由本地输入驱动） |
+| sessionMastery[weapon].specials | 武器逻辑内累加 | 各客户端独立累计（per-weapon special 条件在客户端判断） |
+
+**PvE 协作模式下的处理策略**：与成就系统、Secrets 系统一致，精通进度是个人进度，各客户端独立追踪。理由：
+
+1. 精通加成是个人永久进度，不影响其他玩家
+2. 不同客户端可能使用不同武器，精通进度自然不同
+3. 服务器端不需要知道精通进度来执行权威逻辑 -- 服务器端自己从玩家存档获取 masteryDmgBonus 和 perk 参数
+
+### 六、快照大小影响
+
+| 变更项 | 额外大小 | 说明 |
+|--------|---------|------|
+| PlayerSnap | +0B | 无新增字段 |
+| WeaponSnap | +0B | 格式无变化，masteryBonus 是武器内部属性 |
+| EnemySnap | +0B | 伤害加成体现在 hp 变化中 |
+| GameSnapshot | +0B | mastery 是客户端本地数据 |
+| **合计** | **+0B** | 快照大小无变化 |
+
+总快照大小维持在 ~6.9-8.9KB（Drive #27 估算），不受 Weapon Mastery 影响。
+
+### 七、序列化规格书累积更新项汇总
+
+Drive #19 产出的序列化接口规格书（v1.0, 基于 v1.4.0）已累积以下待更新项：
+
+| # | 来源 | 更新项 | Drive |
+|---|------|--------|-------|
+| 1 | 无尽模式 | GameSnapshot 新增 endless/bossCycleIndex/bossKillCount | #24 |
+| 2 | 幸运硬币 | PlayerSnap 新增 critDmgBonus/goldDropBonus | #23 |
+| 3-11 | 9 新协同 | activeSynergies 扩展 15->21 种 | #23+#25 |
+| 12 | BoomerangSnap | BulletSnap 新增 BoomerangSnap 子类型 | #20+#21 |
+| 13 | TrailSnap | Blazerang 火焰轨迹同步 | #21 |
+| 14 | 毒雾 | EnemySnap 新增 poison 可选字段 | #25 |
+| 15-16 | 2 新敌人 | EnemySnap 新增 shielded/exploder/fusing/fuseTimer | #26 |
+| 17 | 爆炸事件 | EventSnap.type 新增 "explosion" | #26 |
+| 18-19 | 4 关卡敌人 | EnemySnap 新增 lavaTrail/trails + PlayerSnap 新增 burn 可选 | #27 |
+| 20 | 多关卡 | GameSnapshot 新增 stage + EventSnap 新增 summon/lava_pool + BulletSnap 扩展 | #27 |
+| 21 | Secrets | 零更新项（纯客户端 localStorage） | #27 |
+| **22** | **Weapon Mastery** | **零更新项（永久乘数，不新增序列化字段）** | **#28** |
+
+**累积 22 项**，其中 Weapon Mastery 贡献 0 项新增序列化字段。维持"累积更新，一次性合并"策略。
+
+### 八、阻塞状态复查（连续第 16 次）
+
+| 后端产出物 | 状态 | 前端依赖 |
+|-----------|------|---------|
+| 联机技术调研报告 | 完成 | 无 |
+| 联机架构设计规格书 | 完成 | 无 |
+| 网络协议详细规格书 | **需更新（stage 参数 + lava_pool/summon 事件 + fireball 子弹 + player burn + hazards 概念）** | 前端评审 |
+| 联机前置任务清单 | 完成 | 无（已交付前端参考） |
+| 序列化接口规格书 | **需更新（22 项累积更新，含 Mastery 0 项新增）** | 前端评审 + 实现 |
+| Player 拆分方案 | 设计完成 | 前端评审 + 实现 |
+| 服务器 MVP 原型 | 评估完成 | 依赖上述两项前端实现 |
+
+前端当前版本 v1.6.2，v2.3 规划包含：Weapon Mastery 精通系统。Player 拆分仍未排入前端迭代计划。
+
+### 九、建议汇总
+
+| 建议 | 优先级 | 阶段 | 说明 |
+|------|--------|------|------|
+| Weapon Mastery 不新增序列化字段 | 信息 | - | 与 weaponDmgMul (Drive #12) 处理方式一致 |
+| 服务器端 import CFG.WEAPON_MASTERY | 中 | 联机 MVP | 服务器从玩家存档获取 masteryDmgBonus + perk 参数 |
+| getMasteryBonus() 提取为共享函数 | 低 | 前端重构 | 前后端共用，避免 mastery tier 查询逻辑不一致 |
+| sessionMastery 联机时各客户端独立追踪 | 信息 | 联机 Phase 2 | 与成就/Secrets 处理方式一致 |
+
+### 决策记录
+
+- Weapon Mastery 引入 `masteryDmgBonus` 永久伤害乘数，与 `weaponDmgMul`（商店升级）结构等价：都是 beginGame() 时从 Save 加载的静态会话数据，服务器端 import 同一份 config.js 即可获得
+- Weapon Mastery 不引入任何新的序列化字段（PlayerSnap/WeaponSnap/EnemySnap/GameSnapshot 格式不变），累积更新项从 21 增至 22，其中 Mastery 贡献 0 项
+- per-weapon perks 全部是数值参数修改（radiusMul/extraChains/pierceBonus 等），服务器端 import CFG.WEAPON_MASTERY 配置即可应用，无新增逻辑复杂度
+- Weapon Mastery 的伤害公式 `base * weaponDmgMul * (1 + masteryDmgBonus)` 扩展了 applyDmg()，但 hurt() 签名和调用链路无变化，不影响现有的碰撞检测序列化方案
+- sessionMastery 跟踪（kills/time/specials）是纯客户端本地数据，联机时各客户端独立追踪，与成就/Secrets 处理方式一致
+- 快照大小无变化（+0B），维持在 ~6.9-8.9KB
+- 连续第 16 次阻塞确认。后端设计产出物已完备，等待前端排入 Player 拆分和序列化实现
+
+---
+
 ## 2026-04-06 -- Drive #27: 多关卡系统(v2.2) + Secrets系统(v2.3) + 技能面板(v1.6.2) 对联机架构的影响评估
 
 ### 背景
