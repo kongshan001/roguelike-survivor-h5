@@ -4,7 +4,9 @@
 
 H5 类吸血鬼幸存者肉鸽游戏，纯 Canvas 2D 实现，零外部依赖，像素风视觉，支持触控和键盘操控。
 
-**在线体验**: 需要通过本地 HTTP 服务器访问（ES6 Modules 不支持 `file://` 协议）。
+**在线体验**: https://kongshan001.github.io/roguelike-survivor-h5/
+
+> 💡 **国内访问提示**: 如遇访问困难，可使用 Vercel 镜像：https://roguelike-survivor-h5.vercel.app（需自备梯子）
 
 ---
 
