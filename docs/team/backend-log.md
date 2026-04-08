@@ -12,8 +12,8 @@
 | P1 | 联机架构设计规格书（半授权状态同步 + WebSocket + Node.js） | ✅ 设计规格书完成 |
 | P1 | 网络协议详细规格书（消息定义/快照格式/断线重连） | ✅ Drive #11 完成 |
 | P1 | 联机前置任务清单（前端 1 页精简清单） | ✅ Drive #15 已输出 |
-| P1 | 序列化接口规格书（待积累更新：无尽模式 + critDmgBonus/goldDropBonus + 9新协同 + BoomerangSnap + 毒雾poison + 2新敌人 + 4关卡敌人 + 2新Boss + stageId + secrets + skills面板 + Weapon Mastery + Pet/伙伴系统 + Ultimate系统） | ⚠️ Drive #39 巡检：28 项累积更新待合并，阻塞于前端 Player 拆分 |
-| P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，Drive #39 确认前端仍未启动 |
+| P1 | 序列化接口规格书（待积累更新：无尽模式 + critDmgBonus/goldDropBonus + 9新协同 + BoomerangSnap + 毒雾poison + 2新敌人 + 4关卡敌人 + 2新Boss + stageId + secrets + skills面板 + Weapon Mastery + Pet/伙伴系统 + Ultimate系统） | ⚠️ Drive #40 巡检：28 项累积更新待合并，阻塞于前端 Player 拆分 |
+| P1 | Player 拆分方案设计（LocalPlayer / RemotePlayer 接口抽象） | 🔨 设计完成待评审，Drive #40 确认前端仍未启动 |
 | P1 | 无尽模式联机适配方案（房间生命周期/状态同步限流/存档验证） | ⚠️ Drive #24 评估完成，Drive #32 确认无尽模式已完全实现，关键风险已识别，待联机阶段实施 |
 | P1 | 多关卡系统联机适配方案（房间stage参数/spawner改造/关卡敌人/Boss序列化） | ⚠️ Drive #27 评估完成，核心改造：spawner增加stage参数 + 房间数据新增stageId |
 | P1 | Weapon Mastery 联机影响预评估（weaponDmgMul持久化同步/服务器端验证） | ⚠️ Drive #28 预评估完成：weaponDmgMul已在Drive #12评估，Mastery是永久乘数，服务器端import同config即可 |
@@ -21,6 +21,40 @@
 | P1 | Ultimate/终极技能系统联机影响评估（充能同步+释放状态+投射物+力场效果） | ⚠️ Drive #30 评估完成：充能需服务器验证，释放状态需同步，新增UltimateSnap~50-200B/玩家 |
 | P2 | 服务器 MVP 原型（2人同房间联机） | ⏳ 已评估，阻塞于 P1 前端实现 |
 | P2 | Docker 容器化部署方案 | 待评估（低优先级） |
+
+---
+
+## 2026-04-09 -- Drive #40: 后端状态巡检
+
+### 1. 序列化状态确认
+
+- **当前版本**: v1.6.5
+- **Drive #39 记录状态**: 完整。连续第 27 次阻塞确认，后端产出物全部完成，序列化累积 28 项更新待合并
+- **前端变更**: 自 Drive #39 以来无新提交影响后端设计。最近提交为 Drive #40 前端/策划巡检，无代码变更
+- **阻塞状态**: 连续第 28 次确认。后端设计产出物全部完成，Player 拆分和序列化实现仍在前端排入计划之外
+- **序列化累积更新项**: 28 项（Drive #30 统计，Drive #31 分类归档），本 Drive 不新增
+
+### 2. 技术选型确认
+
+- 半授权状态同步 + WebSocket + Node.js + JSON + Fly.io，维持不变
+- 调研报告 `docs/team/backend-research.md` 存档完整（1051 行，含附录 B 无尽模式 + 附录 C 新敌人），无新增调研需求
+- 技术栈选型在 v1.4.0 至 v1.6.5 期间的所有新系统（28 项累积更新）评估后仍然成立
+
+### 3. 阻塞项确认
+
+- **阻塞根因**: 前端 Player 拆分（LocalPlayer / RemotePlayer 接口抽象）未启动
+- **影响范围**: 序列化规格书 v2.0 合并（28 项累积更新）、服务器 MVP 原型实现均无法推进
+- **后续动作**: 等待前端启动 Player 拆分后，再执行序列化规格书合并工作
+
+### 4. 连续零回归确认
+
+- Drive #20 ~ #40 连续 21 个 Drive 零回归
+- 前端 Drive #39: 24/24 JS 语法检查通过，14/14 E2E 全绿零 flaky
+- 后端产出物自 Drive #19 完成序列化规格书以来无修改需求（28 项均为待合并增量）
+
+### 5. 变更文件
+
+- `docs/team/backend-log.md` -- 新增 Drive #40 巡检记录
 
 ---
 
